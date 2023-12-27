@@ -19,27 +19,27 @@
   #include <espnow.h>
 #endif  // ESP32
 
-#define NODE_NAME "Jeep_V2-C3"
-#define VERSION   "V 0.11"
+#define NODE_NAME "Jeep_V2-SW"
+#define VERSION   "V 0.51"
 
 #ifdef MODULE_SWITCH_4
   #define NODE_TYPE SWITCH_4_WAY
  
   #define NAME_SENSOR_0 "SW-0"
   #define TYPE_SENSOR_0  SENS_TYPE_SWITCH
-  #define IOPORT_0       4
+  #define IOPORT_0       1
   
   #define NAME_SENSOR_1 "SW-1"
   #define TYPE_SENSOR_1  SENS_TYPE_SWITCH
-  #define IOPORT_1       14
+  #define IOPORT_1       2
   
   #define NAME_SENSOR_2 "SW-2"
   #define TYPE_SENSOR_2  SENS_TYPE_SWITCH
-  #define IOPORT_2       12
+  #define IOPORT_2       3
   
   #define NAME_SENSOR_3 "SW-3"
   #define TYPE_SENSOR_3  SENS_TYPE_SWITCH
-  #define IOPORT_3       13
+  #define IOPORT_3       4
   
 #endif
 
@@ -69,13 +69,13 @@
   #define NAME_SENSOR_4  "v2-Volt"
   #define TYPE_SENSOR_4  SENS_TYPE_VOLT
   #define VIN_SENSOR_4   200
+
+  #define IOPORT_4       5
 #endif
 
-#define PIN_VOLTAGE    35
+//Adafruit_ADS1115 ads;
 
-Adafruit_ADS1115 ads;
-
-struct_Sensor S[MAX_PERIPHERALS];
+RTC_DATA_ATTR struct_Periph S[MAX_PERIPHERALS];
 struct_Peer   P[MAX_PEERS];
 
 struct_Touch Touch;
@@ -131,6 +131,7 @@ void   ClearInit();
 void   ShowPairingScreen();
 void   ShowEichen();
 void   ShowVoltCalib(float V);
+void   UpdateSwitches();
 
 void   SetSleepMode(bool Mode);
 void   SetDebugMode(bool Mode);
@@ -142,33 +143,170 @@ void   PrintMAC(const uint8_t * mac_addr);
 
 bool   isPeerEmpty(int PNr);
 bool   isSensorEmpty(int SNr);
+void   GoToSleep();
 
 
 void InitModule() {
   preferences.begin("JeepifyInit", true);
   Debug     = preferences.getBool("Debug", true);
   SleepMode = preferences.getBool("SleepMode", false);
-  
-  strcpy(S[0].Name, NAME_SENSOR_0);
-  S[0].Type     = TYPE_SENSOR_0;
-  S[0].IOPort   = IOPORT_0;
-  
-  strcpy(S[1].Name, NAME_SENSOR_1);
-  S[1].Type     = TYPE_SENSOR_1;
-  S[1].IOPort   = IOPORT_1;
-  
-  strcpy(S[2].Name, NAME_SENSOR_2);
-  S[2].Type     = TYPE_SENSOR_2;
-  S[2].IOPort   = IOPORT_2;
-  
-  strcpy(S[3].Name, NAME_SENSOR_3);
-  S[3].Type     = TYPE_SENSOR_3;
-  S[3].IOPort   = IOPORT_3;
-
-  S[4].Type = 0;
-
   preferences.end();
 
+  //for (int SNr=0; SNr<MAX_PERIPHERALS; SNr++) S[SNr].Type = 0;
+
+  
+#ifdef NAME_SENSOR_0
+    strcpy(S[0].Name, NAME_SENSOR_0);
+    S[0].Type     = TYPE_SENSOR_0;
+    S[0].IOPort   = IOPORT_0;
+    
+    #ifdef NULL_SENSOR_0
+      S[0].NullWert = NULL_SENSOR_0;
+    #endif
+    
+    #ifdef SENS_SENSOR_0
+      S[0].VperAmp  = SENS_SENSOR_0;
+    #endif
+    
+    #ifdef VIN_SENSOR_0
+      S[0].Vin = VIN_SENSOR_0;
+    #endif 
+#endif
+
+#ifdef NAME_SENSOR_1
+    strcpy(S[1].Name, NAME_SENSOR_1);
+    S[1].Type     = TYPE_SENSOR_1;
+    S[1].IOPort   = IOPORT_1;
+
+    #ifdef NULL_SENSOR_1 
+      S[1].NullWert = NULL_SENSOR_1;
+    #endif
+    
+    #ifdef SENS_SENSOR_1
+      S[1].VperAmp  = SENS_SENSOR_1;
+    #endif
+    
+    #ifdef VIN_SENSOR_1
+      S[1].Vin = VIN_SENSOR_1;
+    #endif
+#endif
+
+#ifdef NAME_SENSOR_2
+    strcpy(S[2].Name, NAME_SENSOR_2);
+    S[2].Type     = TYPE_SENSOR_2;
+    S[2].IOPort   = IOPORT_2;
+
+    #ifdef NULL_SENSOR_2 
+      S[2].NullWert = NULL_SENSOR_2;
+    #endif
+    
+    #ifdef SENS_SENSOR_2
+      S[2].VperAmp  = SENS_SENSOR_2;
+    #endif
+    
+    #ifdef VIN_SENSOR_2
+      S[2].Vin = VIN_SENSOR_2;
+    #endif
+#endif
+
+#ifdef NAME_SENSOR_3
+    strcpy(S[3].Name, NAME_SENSOR_3);
+    S[3].Type     = TYPE_SENSOR_3;
+    S[3].IOPort   = IOPORT_3;
+
+    #ifdef NULL_SENSOR_3 
+      S[3].NullWert = NULL_SENSOR_3;
+    #endif
+    
+    #ifdef SENS_SENSOR_3
+      S[3].VperAmp  = SENS_SENSOR_3;
+    #endif
+    
+    #ifdef VIN_SENSOR_3
+      S[3].Vin = VIN_SENSOR_3;
+    #endif
+#endif
+
+#ifdef NAME_SENSOR_4
+    strcpy(S[4].Name, NAME_SENSOR_4);
+    S[4].Type     = TYPE_SENSOR_4;
+    S[4].IOPort   = IOPORT_4;
+
+    #ifdef NULL_SENSOR_4 
+      S[4].NullWert = NULL_SENSOR_4;
+    #endif
+    
+    #ifdef SENS_SENSOR_4
+      S[4].VperAmp  = SENS_SENSOR_4;
+    #endif
+    
+    #ifdef VIN_SENSOR_4
+      S[4].Vin = VIN_SENSOR_4;
+    #endif
+#endif
+
+#ifdef NAME_SENSOR_5
+    strcpy(S[5].Name, NAME_SENSOR_5);
+    S[5].Type     = TYPE_SENSOR_5;
+    S[5].IOPort   = IOPORT_5;
+
+    #ifdef NULL_SENSOR_5 
+      S[5].NullWert = NULL_SENSOR_5;
+    #endif
+    
+    #ifdef SENS_SENSOR_5
+      S[5].VperAmp  = SENS_SENSOR_5;
+    #endif
+    
+    #ifdef VIN_SENSOR_5
+      S[5].Vin = VIN_SENSOR_5;
+    #endif 
+#endif
+
+#ifdef NAME_SENSOR_6
+    strcpy(S[6].Name, NAME_SENSOR_6);
+    S[6].Type     = TYPE_SENSOR_6;
+    S[6].IOPort   = IOPORT_6;
+
+    #ifdef NULL_SENSOR_6 
+      S[6].NullWert = NULL_SENSOR_6;
+    #endif
+    
+    #ifdef SENS_SENSOR_6
+      S[6].VperAmp  = SENS_SENSOR_6;
+    #endif
+    
+    #ifdef VIN_SENSOR_6
+      S[6].Vin = VIN_SENSOR_6;
+    #endif
+#endif
+
+#ifdef NAME_SENSOR_7
+    strcpy(S[7].Name, NAME_SENSOR_7);
+    S[7].Type     = TYPE_SENSOR_7;
+    S[7].IOPort   = IOPORT_7;
+
+    #ifdef NULL_SENSOR_7 
+      S[7].NullWert = NULL_SENSOR_7;
+    #endif
+    
+    #ifdef SENS_SENSOR_7
+      S[7].VperAmp  = SENS_SENSOR_7;
+    #endif
+    
+    #ifdef VIN_SENSOR_7
+      S[7].Vin = VIN_SENSOR_7;
+    #endif 
+#endif
+
+  for (int SNr=0; SNr<MAX_PERIPHERALS; SNr++)  {
+    switch (S[SNr].Type) {
+      case SENS_TYPE_SWITCH: pinMode(S[SNr].IOPort, OUTPUT); break;
+      case SENS_TYPE_VOLT:   pinMode(S[SNr].IOPort, INPUT ); break;
+      case SENS_TYPE_AMP:    pinMode(S[SNr].IOPort, INPUT ); break;
+    }
+  }
+  
   Serial.println("InitModule() fertig...");
 }
 void SavePeers() {
@@ -192,7 +330,7 @@ void SavePeers() {
       sprintf(Buf, "Type-%d", Pi); 
       preferences.putInt(Buf, P[Pi].Type);
       Serial.print("schreibe "); Serial.print(Buf); Serial.print(" = "); Serial.println(P[Pi].Type);
-      
+
       //P.Name
       sprintf(Buf, "Name-%d", Pi); 
       BufS = P[Pi].Name;
@@ -253,6 +391,7 @@ void GetPeers() {
 }
 void ReportPeers() {
   char Buf[200];
+  Serial.println("Report-Peers:");
   for (int PNr=0; PNr<MAX_PEERS; PNr++) {
     if (Debug) {
       sprintf(Buf, "%s (Type: %d) - MAC:", P[PNr].Name, P[PNr].Type);
@@ -265,7 +404,7 @@ void RegisterPeers() {
   // Register BROADCAST ESP32
   #ifdef ESP32
     esp_now_peer_info_t peerInfo;
-    peerInfo.channel = 0;
+    peerInfo.channel = 1;
     peerInfo.encrypt = false;
     memset(&peerInfo, 0, sizeof(peerInfo));
     
@@ -276,7 +415,21 @@ void RegisterPeers() {
       else {
         Serial.print (" ("); PrintMAC(peerInfo.peer_addr);  Serial.println(") added...");
       }
-
+/*for (int b=0; b<6; b++) peerInfo.peer_addr[b] = (uint8_t) broadcastAddressMonitor1[b];
+      if (esp_now_add_peer(&peerInfo) != ESP_OK) {
+        PrintMAC(peerInfo.peer_addr); Serial.println(": Failed to add peer");
+      }
+      else {
+        Serial.print (" ("); PrintMAC(peerInfo.peer_addr);  Serial.println(") added...");
+      }
+for (int b=0; b<6; b++) peerInfo.peer_addr[b] = (uint8_t) broadcastAddressMonitor2[b];
+      if (esp_now_add_peer(&peerInfo) != ESP_OK) {
+        PrintMAC(peerInfo.peer_addr); Serial.println(": Failed to add peer");
+      }
+      else {
+        Serial.print (" ("); PrintMAC(peerInfo.peer_addr);  Serial.println(") added...");
+      }
+*/
     // Register Peers
     for (int PNr=0; PNr<MAX_PEERS; PNr++) {
       if (!isPeerEmpty(PNr)) {
@@ -291,7 +444,7 @@ void RegisterPeers() {
       }
     }
   #elif defined(ESP8266)
-    if (esp_now_add_peer(broadcastAddressAll, ESP_NOW_ROLE_SLAVE, 0, NULL, 0) != 0) {
+    if (esp_now_add_peer(broadcastAddressAll, ESP_NOW_ROLE_SLAVE, 1, NULL, 0) != 0) {
       PrintMAC(broadcastAddressAll); Serial.println(": Failed to add peer");
     }
     else {
@@ -299,7 +452,7 @@ void RegisterPeers() {
     }
     for (int PNr=0; PNr<MAX_PEERS; PNr++) {
       if (!isPeerEmpty(PNr)) {
-        if (esp_now_add_peer(P[PNr].BroadcastAddress, ESP_NOW_ROLE_SLAVE, 0, NULL, 0) != 0) {
+        if (esp_now_add_peer(P[PNr].BroadcastAddress, ESP_NOW_ROLE_SLAVE, 1, NULL, 0) != 0) {
           Serial.println(P[PNr].Name); Serial.println(": Failed to add peer");
         }
         else {
@@ -350,7 +503,10 @@ void SendMessage () {
 
   serializeJson(doc, jsondata);  
   //senden an alle Monitore
+  ReportPeers();
+
   for (int PNr=0; PNr<MAX_PEERS; PNr++) {
+    //Serial.println(P[PNr].Type);
     if (P[PNr].Type >= MONITOR_ROUND) {
       Serial.print("Sending to: "); Serial.println(P[PNr].Name); 
       Serial.print(" ("); PrintMAC(P[PNr].BroadcastAddress); Serial.println(")");
@@ -409,8 +565,8 @@ void ShowEichen() {
   
   for(int SNr=0; SNr<MAX_PERIPHERALS; SNr++) {
     if (S[SNr].Type == SENS_TYPE_AMP) {
-      float TempVal  = ads.readADC_SingleEnded(S[SNr].IOPort);
-      float TempVolt = ads.computeVolts(TempVal);
+      float TempVal  = 10828; //ads.readADC_SingleEnded(S[SNr].IOPort);
+      float TempVolt = 13;// ads.computeVolts(TempVal);
       if (Debug) { 
         Serial.print("TempVal:");     Serial.println(TempVal);
         Serial.print(", TempVolt: "); Serial.println(TempVolt);
@@ -476,84 +632,85 @@ void ShowVoltCalib(float V) {
     }
   }
 }
-
 void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) { //ESP32
 //void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
   char* buff = (char*) incomingData;        //char buffer
+  bool PairingSuccess = false;
   jsondata = String(buff);                  //converting into STRING
   Serial.print("Recieved ");
   Serial.println(jsondata);    //Complete JSON data will be printed here
   
   DeserializationError error = deserializeJson(doc, jsondata);
-
+  
   if (!error) {
-    if (ReadyToPair) {
-      if (doc["Pairing"] == "you are paired") { 
-        bool exists = esp_now_is_peer_exist(mac);
-        if (exists) { 
-          PrintMAC(mac); Serial.println(" already exists...");
-        }
-        else {
-          bool PairingSuccess = false;
-          for (int PNr=0; PNr<MAX_PEERS; PNr++) {
-            Serial.print("P["); Serial.print(PNr); Serial.print("].Type = "); Serial.println(P[PNr].Type);
-            if ((P[PNr].Type == 0) and (!PairingSuccess)) {
-              Serial.println("leerer Slot gefunden");
-              P[PNr].Type = (int) doc["Type"];
-              strcpy(P[PNr].Name, doc["Node"]);
-              
-              for (int b = 0; b < 6; b++ ) P[PNr].BroadcastAddress[b] = mac[b];
-              P[PNr].TSLastSeen = millis();
-              
-              PairingSuccess = true; 
-              SavePeers();
-              //ShowAllPreferences();
-              RegisterPeers();
-              
-              if (Debug) {
-                Serial.print("Adding in slot: "); Serial.println(PNr);
-                Serial.print("Name: "); Serial.print(P[PNr].Name);
-                Serial.print(" (");PrintMAC(P[PNr].BroadcastAddress); Serial.println(")\n");
-                Serial.print("Saving Peers after received new one...");
-                ReportPeers();
-              }
-              ReadyToPair = false;
+    Serial.println("No Error");
+    
+    if ((doc["Pairing"] == "you are paired") and (doc["Peer"] == NODE_NAME)) { 
+      Serial.println("in you are paired und node");
+    
+      bool exists = esp_now_is_peer_exist(mac);
+      if (exists) { 
+        PrintMAC(mac); Serial.println(" already exists...");
+      }
+      else {
+        for (int PNr=0; PNr<MAX_PEERS; PNr++) {
+          Serial.print("P["); Serial.print(PNr); Serial.print("].Type = "); Serial.println(P[PNr].Type);
+          if ((P[PNr].Type == 0) and (!PairingSuccess)) {
+            Serial.println("leerer Slot gefunden");
+            P[PNr].Type = (int) doc["Type"];
+            strcpy(P[PNr].Name, doc["Node"]);
+            
+            for (int b = 0; b < 6; b++ ) P[PNr].BroadcastAddress[b] = mac[b];
+            P[PNr].TSLastSeen = millis();
+            
+            PairingSuccess = true; 
+            SavePeers();
+            //ShowAllPreferences();
+            RegisterPeers();
+            
+            if (Debug) {
+              Serial.print("Adding in slot: "); Serial.println(PNr);
+              Serial.print("Name: "); Serial.print(P[PNr].Name);
+              Serial.print(" (");PrintMAC(P[PNr].BroadcastAddress); Serial.println(")\n");
+              Serial.print("Saving Peers after received new one...");
+              ReportPeers();
             }
+            ReadyToPair = false;
           }
-          if (!PairingSuccess) { PrintMAC(mac); Serial.println(" adding failed..."); } 
         }
+        if (!PairingSuccess) { PrintMAC(mac); Serial.println(" adding failed..."); } 
       }
     }
-    else { // (!ReadyToPair)
-      if (doc["Order"] == "stay alive") {
-        TSLastContact = millis();
-        if (Debug) { Serial.print("LastContact: "); Serial.println(TSLastContact); }
-      }
-      if (doc["Order"] == "SleepMode On")  { AddStatus("Sleep: on");  SetSleepMode(true); }
-      if (doc["Order"] == "SleepMode Off") { AddStatus("Sleep: off"); SetSleepMode(false); }
-      if (doc["Order"] == "Debug on")      { AddStatus("Debug: on");  SetDebugMode(true); }
-      if (doc["Order"] == "Debug off")     { AddStatus("Debug: off"); SetDebugMode(false); }
-      if (doc["Order"] == "Reset")         { AddStatus("Clear all"); ClearPeers(); ClearInit(); }
-      if (doc["Order"] == "Restart")       { ESP.restart(); }
-      if (doc["Order"] == "Pair")          { TSPair = millis(); ReadyToPair = true; AddStatus("Pairing beginnt"); }
+    if (doc["Order"] == "stay alive") {
+      TSLastContact = millis();
+      if (Debug) { Serial.print("LastContact: "); Serial.println(TSLastContact); }
+    }
+    if (doc["Order"] == "SleepMode On")  { AddStatus("Sleep: on");  SetSleepMode(true); }
+    if (doc["Order"] == "SleepMode Off") { AddStatus("Sleep: off"); SetSleepMode(false); }
+    if (doc["Order"] == "Debug on")      { AddStatus("Debug: on");  SetDebugMode(true); }
+    if (doc["Order"] == "Debug off")     { AddStatus("Debug: off"); SetDebugMode(false); }
+    if (doc["Order"] == "Reset")         { AddStatus("Clear all"); ClearPeers(); ClearInit(); }
+    if (doc["Order"] == "Restart")       { ESP.restart(); }
+    if (doc["Order"] == "Pair")          { TSPair = millis(); ReadyToPair = true; AddStatus("Pairing beginnt"); }
 
-      // BatterySensor
-      if (NODE_TYPE == BATTERY_SENSOR) {
-        if (doc["Order"] == "Eichen")      { Mode = S_EICHEN;  AddStatus("Eichen beginnt"); ShowEichen(); }
-        if (doc["Order"] == "VoltCalib")   { Mode = S_CAL_VOL; AddStatus("VoltCalib beginnt"); ShowVoltCalib((float)doc["Value"]); }
-      }
-      // PDC
-      if ((NODE_TYPE == SWITCH_1_WAY) or (NODE_TYPE == SWITCH_2_WAY) or
-          (NODE_TYPE == SWITCH_4_WAY) or (NODE_TYPE == SWITCH_8_WAY)) {
-        if (doc["Order"]   == "ToggleSwitch") {
-          for (int SNr=0; SNr<MAX_PERIPHERALS; SNr++) {
-            if (S[SNr].Name == doc["Value"]) S[SNr].Value = !S[SNr].Value; 
+    // BatterySensor
+    if (NODE_TYPE == BATTERY_SENSOR) {
+      if (doc["Order"] == "Eichen")      { Mode = S_EICHEN;  AddStatus("Eichen beginnt"); ShowEichen(); }
+      if (doc["Order"] == "VoltCalib")   { Mode = S_CAL_VOL; AddStatus("VoltCalib beginnt"); ShowVoltCalib((float)doc["Value"]); }
+    }
+    // PDC
+    if ((NODE_TYPE == SWITCH_1_WAY) or (NODE_TYPE == SWITCH_2_WAY) or
+        (NODE_TYPE == SWITCH_4_WAY) or (NODE_TYPE == SWITCH_8_WAY)) {
+      if (doc["Order"]   == "ToggleSwitch") {
+        for (int SNr=0; SNr<MAX_PERIPHERALS; SNr++) {
+          if (S[SNr].Name == doc["Value"]) {
+            S[SNr].Value = !S[SNr].Value; 
             String Nr = doc["Value"];
             AddStatus("ToggleSwitch "+Nr);
+            UpdateSwitches();
           }
-          SendMessage();
-        }      
-      }
+        }
+      }      
     }
   } // end (!error)
   else {  // error
@@ -561,6 +718,10 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) { //E
         Serial.println(error.f_str());
         return;
   }
+}
+void UpdateSwitches() {
+  for (int SNr=0; SNr<MAX_PERIPHERALS; SNr++) if (S[SNr].Type = SENS_TYPE_SWITCH) digitalWrite(S[SNr].IOPort, S[SNr].Value);
+  SendMessage();
 }
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) { 
   Serial.print("\r\nLast Packet Send Status:\t");
@@ -582,7 +743,6 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
 void setup() {
   Serial.begin(74880);
 
-  delay(10000);
   /*Wire.begin(D5, D6);
   ads.setGain(GAIN_TWOTHIRDS);  // 0.1875 mV/Bit .... +- 6,144V
   ads.begin();
@@ -599,7 +759,7 @@ void setup() {
   esp_now_register_send_cb(OnDataSent);
   esp_now_register_recv_cb(OnDataRecv);    
 
-  ClearPeers();
+  //ClearPeers();
   InitModule();     AddStatus("Init Module");
   GetPeers();       AddStatus("Get Peers");
   ReportPeers();    
@@ -607,7 +767,11 @@ void setup() {
   
   if (PeerCount == 0) { AddStatus("Pairing beginnt"); ReadyToPair = true; TSPair = millis(); }
   
-  //free Pins
+  TSLastContact = millis();
+
+  for (int SNr=0; SNr<MAX_PERIPHERALS; SNr++) if (S[SNr].Type = SENS_TYPE_SWITCH) gpio_hold_dis((gpio_num_t)S[SNr].IOPort);  
+  gpio_deep_sleep_hold_dis();
+
 }
 void loop() {
   if  ((millis() - TSSend ) > MSG_INTERVAL  ) {
@@ -620,6 +784,7 @@ void loop() {
     ReadyToPair = false;
     AddStatus("Pairing beendet...");
   }
+  if  (((millis() - TSLastContact) > SLEEP_INTERVAL ) and (SleepMode)) GoToSleep();
 }
 float ReadAmp (int A) {
   float TempVal = 12; //ads.readADC_SingleEnded(S[A].IOPort);
@@ -656,6 +821,12 @@ bool  isPeerEmpty(int PNr) {
 }
 bool  isSensorEmpty(int SNr) {
   return (S[SNr].Type == 0);
+}
+void  GoToSleep() {
+  gpio_deep_sleep_hold_en();
+  for (int SNr=0; SNr<MAX_PERIPHERALS; SNr++) if (S[SNr].Type = SENS_TYPE_SWITCH) gpio_hold_en((gpio_num_t)S[SNr].IOPort);  
+  esp_sleep_enable_timer_wakeup(SLEEP_INTERVAL * 1000);
+  esp_deep_sleep_start();
 }
 void  PrintMAC(const uint8_t * mac_addr){
   char macStr[18];
