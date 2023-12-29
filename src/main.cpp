@@ -9,6 +9,20 @@
   #include <Spi.h>
 #endif
 
+#ifdef TFT_USED
+  #include <TFT_eSPI.h>
+  #include "NotoSansBold15.h"
+  #include "NotoSansBold36.h"
+  #include "NotoSansMonoSCB20.h"
+
+  TFT_eSPI TFT = TFT_eSPI();
+#endif
+#ifdef TOUCH911_USED
+  #include "TAMC_GT911.h"
+  int TouchRead();
+  TAMC_GT911 tp = TAMC_GT911(TOUCH_SDA, TOUCH_SCL, TOUCH_INT, TOUCH_RST, TOUCH_WIDTH, TOUCH_HEIGHT);
+#endif
+
 #include "C:\Users\micha\Documents\PlatformIO\Projects\jeepify.h"
 #include <ArduinoJson.h>
 #include <Preferences.h>
@@ -158,11 +172,8 @@ void InitModule() {
   Debug     = preferences.getBool("Debug", true);
   SleepMode = preferences.getBool("SleepMode", false);
   preferences.end();
-
-  //for (int SNr=0; SNr<MAX_PERIPHERALS; SNr++) S[SNr].Type = 0;
-
   
-#ifdef NAME_SENSOR_0
+  #ifdef NAME_SENSOR_0
     strcpy(S[0].Name, NAME_SENSOR_0);
     S[0].Type     = TYPE_SENSOR_0;
     S[0].IOPort   = IOPORT_0;
@@ -178,9 +189,9 @@ void InitModule() {
     #ifdef VIN_SENSOR_0
       S[0].Vin = VIN_SENSOR_0;
     #endif 
-#endif
+  #endif
 
-#ifdef NAME_SENSOR_1
+  #ifdef NAME_SENSOR_1
     strcpy(S[1].Name, NAME_SENSOR_1);
     S[1].Type     = TYPE_SENSOR_1;
     S[1].IOPort   = IOPORT_1;
@@ -196,9 +207,9 @@ void InitModule() {
     #ifdef VIN_SENSOR_1
       S[1].Vin = VIN_SENSOR_1;
     #endif
-#endif
+  #endif
 
-#ifdef NAME_SENSOR_2
+  #ifdef NAME_SENSOR_2
     strcpy(S[2].Name, NAME_SENSOR_2);
     S[2].Type     = TYPE_SENSOR_2;
     S[2].IOPort   = IOPORT_2;
@@ -214,9 +225,9 @@ void InitModule() {
     #ifdef VIN_SENSOR_2
       S[2].Vin = VIN_SENSOR_2;
     #endif
-#endif
+  #endif
 
-#ifdef NAME_SENSOR_3
+  #ifdef NAME_SENSOR_3
     strcpy(S[3].Name, NAME_SENSOR_3);
     S[3].Type     = TYPE_SENSOR_3;
     S[3].IOPort   = IOPORT_3;
@@ -232,9 +243,9 @@ void InitModule() {
     #ifdef VIN_SENSOR_3
       S[3].Vin = VIN_SENSOR_3;
     #endif
-#endif
+  #endif
 
-#ifdef NAME_SENSOR_4
+  #ifdef NAME_SENSOR_4
     strcpy(S[4].Name, NAME_SENSOR_4);
     S[4].Type     = TYPE_SENSOR_4;
     S[4].IOPort   = IOPORT_4;
@@ -250,9 +261,9 @@ void InitModule() {
     #ifdef VIN_SENSOR_4
       S[4].Vin = VIN_SENSOR_4;
     #endif
-#endif
+  #endif
 
-#ifdef NAME_SENSOR_5
+  #ifdef NAME_SENSOR_5
     strcpy(S[5].Name, NAME_SENSOR_5);
     S[5].Type     = TYPE_SENSOR_5;
     S[5].IOPort   = IOPORT_5;
@@ -268,9 +279,9 @@ void InitModule() {
     #ifdef VIN_SENSOR_5
       S[5].Vin = VIN_SENSOR_5;
     #endif 
-#endif
+  #endif
 
-#ifdef NAME_SENSOR_6
+  #ifdef NAME_SENSOR_6
     strcpy(S[6].Name, NAME_SENSOR_6);
     S[6].Type     = TYPE_SENSOR_6;
     S[6].IOPort   = IOPORT_6;
@@ -286,9 +297,9 @@ void InitModule() {
     #ifdef VIN_SENSOR_6
       S[6].Vin = VIN_SENSOR_6;
     #endif
-#endif
+  #endif
 
-#ifdef NAME_SENSOR_7
+  #ifdef NAME_SENSOR_7
     strcpy(S[7].Name, NAME_SENSOR_7);
     S[7].Type     = TYPE_SENSOR_7;
     S[7].IOPort   = IOPORT_7;
@@ -304,7 +315,7 @@ void InitModule() {
     #ifdef VIN_SENSOR_7
       S[7].Vin = VIN_SENSOR_7;
     #endif 
-#endif
+  #endif
 
   for (int SNr=0; SNr<MAX_PERIPHERALS; SNr++)  {
     switch (S[SNr].Type) {
@@ -313,6 +324,19 @@ void InitModule() {
       case SENS_TYPE_AMP:    pinMode(S[SNr].IOPort, INPUT ); break;
     }
   }
+
+  #ifdef TOUCH911_USED
+    tp.begin();
+    tp.setRotation(ROTATION_LEFT);
+  #endif
+
+  #ifdef TFT_USED
+    pinMode(TFT_BL, OUTPUT);
+    digitalWrite(TFT_BL, TFT_BACKLIGHT_ON);
+    TFT.init();
+    TFT.setRotation(3);
+    TFT.fillScreen(TFT_BLACK);
+  #endif
   
   Serial.println("InitModule() fertig...");
 }
@@ -843,3 +867,56 @@ void  PrintMAC(const uint8_t * mac_addr){
            mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
   Serial.print(macStr);
 }
+#ifdef TOUCH911_USED //int TouchRead()
+int   TouchRead() {
+  uint16_t TouchX, TouchY;
+  uint8_t  Gesture;
+  bool TouchContact;
+
+  int ret = 0;
+
+  tp.read();
+  
+  Touch.Touched = tp.isTouched;
+  TouchX = tp.points[0].x;
+  TouchY = tp.points[0].y;
+  
+  if(Touch.Touched && !Touch.TouchedOld) {
+    Touch.x0 = TouchX;    // erste Berührung
+    Touch.y0 = TouchY;
+    Touch.TSFirstTouch = millis();
+    Touch.TSReleaseTouch = 0;
+    ret = TOUCHED;
+  } 
+  else if (Touch.Touched && Touch.TouchedOld) { 
+    Touch.x1 = TouchX;     // gehalten
+    Touch.y1 = TouchY;
+    ret = HOLD;
+  }
+  else if (!Touch.Touched && Touch.TouchedOld) {
+    Touch.x1 = TouchX;     // losgelassen
+    Touch.y1 = TouchY;
+    Touch.TSReleaseTouch = millis();
+         if ((Touch.x1-Touch.x0) > 50)  { Touch.Gesture = SWIPE_RIGHT;  ret = SWIPE_RIGHT; }                      // swipe left
+    else if ((Touch.x1-Touch.x0) < -50) { Touch.Gesture = SWIPE_LEFT; ret = SWIPE_LEFT; }                     // swipe right
+    else if ((Touch.y1-Touch.y0) > 50)  { Touch.Gesture = SWIPE_DOWN;  ret = SWIPE_DOWN; }                      // swipe down
+    else if ((Touch.y1-Touch.y0) < -50) { Touch.Gesture = SWIPE_UP;    ret = SWIPE_UP; }                        // swipe up
+    else if ((Touch.TSReleaseTouch - Touch.TSFirstTouch) > LONG_PRESS_INTERVAL)                                 // longPress
+                                        { Touch.Gesture = LONG_PRESS;  ret = LONG_PRESS; }
+    else                                { Touch.Gesture = CLICK; ret = CLICK; }
+  }
+  else if (!Touch.Touched && !Touch.TouchedOld) {
+    Touch.x0 = 0;    // nix
+    Touch.y0 = 0;
+    Touch.x1 = 0;
+    Touch.y1 = 0;
+    Touch.Gesture = 0;
+    Touch.TSFirstTouch = 0;
+    Touch.TSReleaseTouch = 0;
+    ret = 0;
+  }
+  Touch.TouchedOld = Touch.Touched;  
+
+  return ret;
+}
+#endif
