@@ -2,12 +2,16 @@
 #define MODULE_SWITCH_4
 
 #include <Arduino.h>
-#include <Adafruit_ADS1X15.h>
-#include "../../jeepify.h"
+
+#ifdef ADC_USED
+  #include <Adafruit_ADS1X15.h>
+  #include <Wire.h>
+  #include <Spi.h>
+#endif
+
+#include "C:\Users\micha\Documents\PlatformIO\Projects\jeepify.h"
 #include <ArduinoJson.h>
 #include <Preferences.h>
-#include <Wire.h>
-#include <Spi.h>
 
 #ifdef ESP32
   #include <esp_now.h>
@@ -17,10 +21,10 @@
 #elif defined(ESP8266)
   #include <ESP8266WiFi.h>
   #include <espnow.h>
-#endif  // ESP32
+#endif 
 
-#define NODE_NAME "Jeep_V2-SW"
-#define VERSION   "V 0.51"
+#define NODE_NAME "Jeep_SW1"
+#define VERSION   "V 0.80"
 
 #ifdef MODULE_SWITCH_4
   #define NODE_TYPE SWITCH_4_WAY
@@ -45,7 +49,8 @@
 
 #ifdef MODULE_4AMP_1VOLT
   #define NODE_TYPE BATTERY_SENSOR
-  
+  #define ADC_USED       
+ 
   #define NAME_SENSOR_0 "v2-0"
   #define TYPE_SENSOR_0  SENS_TYPE_AMP
   #define NULL_SENSOR_0  3134
@@ -73,7 +78,9 @@
   #define IOPORT_4       5
 #endif
 
-//Adafruit_ADS1115 ads;
+#ifdef ADC_USED
+ Adafruit_ADS1115 ads;
+#endif
 
 RTC_DATA_ATTR struct_Periph S[MAX_PERIPHERALS];
 struct_Peer   P[MAX_PEERS];
@@ -95,7 +102,7 @@ int PeerCount = 0;
 
 bool Debug         = true;
 bool SleepMode     = false;
-bool ReadyToPair   = false;
+bool ReadyToPair   = true;
 
 int  Mode          = S_STATUS;
 int  OldMode       = 0;
@@ -632,8 +639,11 @@ void ShowVoltCalib(float V) {
     }
   }
 }
-void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) { //ESP32
-//void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
+#ifdef ESP32 
+    void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
+  #elif defined(ESP8266)
+    void OnDataRecv(uint8_t * mac, uint8_t *incomingData, uint8_t len) {
+#endif
   char* buff = (char*) incomingData;        //char buffer
   bool PairingSuccess = false;
   jsondata = String(buff);                  //converting into STRING
@@ -665,7 +675,6 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) { //E
             
             PairingSuccess = true; 
             SavePeers();
-            //ShowAllPreferences();
             RegisterPeers();
             
             if (Debug) {
@@ -693,25 +702,18 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) { //E
     if (doc["Order"] == "Restart")       { ESP.restart(); }
     if (doc["Order"] == "Pair")          { TSPair = millis(); ReadyToPair = true; AddStatus("Pairing beginnt"); }
 
-    // BatterySensor
-    if (NODE_TYPE == BATTERY_SENSOR) {
-      if (doc["Order"] == "Eichen")      { Mode = S_EICHEN;  AddStatus("Eichen beginnt"); ShowEichen(); }
-      if (doc["Order"] == "VoltCalib")   { Mode = S_CAL_VOL; AddStatus("VoltCalib beginnt"); ShowVoltCalib((float)doc["Value"]); }
-    }
-    // PDC
-    if ((NODE_TYPE == SWITCH_1_WAY) or (NODE_TYPE == SWITCH_2_WAY) or
-        (NODE_TYPE == SWITCH_4_WAY) or (NODE_TYPE == SWITCH_8_WAY)) {
-      if (doc["Order"]   == "ToggleSwitch") {
-        for (int SNr=0; SNr<MAX_PERIPHERALS; SNr++) {
-          if (S[SNr].Name == doc["Value"]) {
-            S[SNr].Value = !S[SNr].Value; 
-            String Nr = doc["Value"];
-            AddStatus("ToggleSwitch "+Nr);
-            UpdateSwitches();
-          }
+    if (doc["Order"] == "Eichen")        { Mode = S_EICHEN;  AddStatus("Eichen beginnt"); ShowEichen(); }
+    if (doc["Order"] == "VoltCalib")     { Mode = S_CAL_VOL; AddStatus("VoltCalib beginnt"); ShowVoltCalib((float)doc["Value"]); }
+    if (doc["Order"] == "ToggleSwitch") {
+      for (int SNr=0; SNr<MAX_PERIPHERALS; SNr++) {
+        if ((S[SNr].Name == doc["Value"]) and (S[SNr].Type == SENS_TYPE_SWITCH)) {
+          S[SNr].Value = !S[SNr].Value; 
+          String Nr = doc["Value"];
+          AddStatus("ToggleSwitch "+Nr);
+          UpdateSwitches();
         }
-      }      
-    }
+      }
+    }      
   } // end (!error)
   else {  // error
         Serial.print(F("deserializeJson() failed: "));  //Just in case of an ERROR of ArduinoJSon
@@ -720,33 +722,35 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) { //E
   }
 }
 void UpdateSwitches() {
-  for (int SNr=0; SNr<MAX_PERIPHERALS; SNr++) if (S[SNr].Type = SENS_TYPE_SWITCH) digitalWrite(S[SNr].IOPort, S[SNr].Value);
+  for (int SNr=0; SNr<MAX_PERIPHERALS; SNr++) if (S[SNr].Type == SENS_TYPE_SWITCH) digitalWrite(S[SNr].IOPort, S[SNr].Value);
   SendMessage();
 }
+#ifdef ESP32 
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) { 
   Serial.print("\r\nLast Packet Send Status:\t");
   Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
 }
-  
-  //8266
-  /*void OnDataSent(uint8_t *mac_addr, uint8_t sendStatus) {
-    Serial.print("Last Packet Send Status: ");
-    if (sendStatus == 0){
-      Serial.println("Delivery success");
-    }
-    else{
-      Serial.println("Delivery fail");
-    }
+#elif defined(ESP8266)
+void OnDataSent(uint8_t *mac_addr, uint8_t sendStatus) {
+  Serial.print("Last Packet Send Status: ");
+  if (sendStatus == 0){
+    Serial.println("Delivery success");
   }
-*/
+  else{
+    Serial.println("Delivery fail");
+  }
+}
+#endif
 
 void setup() {
   Serial.begin(74880);
 
-  /*Wire.begin(D5, D6);
-  ads.setGain(GAIN_TWOTHIRDS);  // 0.1875 mV/Bit .... +- 6,144V
-  ads.begin();
-  */
+  #ifdef ADC_USED
+    Wire.begin(D5, D6);
+    ads.setGain(GAIN_TWOTHIRDS);  // 0.1875 mV/Bit .... +- 6,144V
+    ads.begin();
+  #endif
+
   WiFi.mode(WIFI_STA);
   
   #ifdef ESP32
@@ -769,7 +773,7 @@ void setup() {
   
   TSLastContact = millis();
 
-  for (int SNr=0; SNr<MAX_PERIPHERALS; SNr++) if (S[SNr].Type = SENS_TYPE_SWITCH) gpio_hold_dis((gpio_num_t)S[SNr].IOPort);  
+  for (int SNr=0; SNr<MAX_PERIPHERALS; SNr++) if (S[SNr].Type == SENS_TYPE_SWITCH) gpio_hold_dis((gpio_num_t)S[SNr].IOPort);  
   gpio_deep_sleep_hold_dis();
 
 }
@@ -777,7 +781,7 @@ void loop() {
   if  ((millis() - TSSend ) > MSG_INTERVAL  ) {
     TSSend = millis();
     if (ReadyToPair) SendPairingRequest();
-    else SendMessage();
+    SendMessage();
   }
   if (((millis() - TSPair ) > PAIR_INTERVAL ) and (ReadyToPair)) {
     TSPair = 0;
@@ -787,20 +791,25 @@ void loop() {
   if  (((millis() - TSLastContact) > SLEEP_INTERVAL ) and (SleepMode)) GoToSleep();
 }
 float ReadAmp (int A) {
-  float TempVal = 12; //ads.readADC_SingleEnded(S[A].IOPort);
-  float TempVolt = 11;// ads.computeVolts(TempVal); 
-  float TempAmp = (TempVolt - S[A].NullWert) / S[A].VperAmp;
+  #ifdef ADC_USED
+    float TempVal  = ads.readADC_SingleEnded(S[A].IOPort);
+    float TempVolt = ads.computeVolts(TempVal); 
+    float TempAmp  = (TempVolt - S[A].NullWert) / S[A].VperAmp;
 
-  if (Debug) {
-    Serial.print("TempVal:  "); Serial.println(TempVal,4);
-    Serial.print("TempVolt: "); Serial.println(TempVolt,4);
-    Serial.print("Nullwert: "); Serial.println(S[A].NullWert,4);
-    Serial.print("VperAmp:  "); Serial.println(S[A].VperAmp,4);
-    Serial.print("TempAmp:  "); Serial.println(TempAmp,4);
-  } 
-  if (abs(TempAmp) < SCHWELLE) TempAmp = 0;
+    if (Debug) {
+      Serial.print("TempVal:  "); Serial.println(TempVal,4);
+      Serial.print("TempVolt: "); Serial.println(TempVolt,4);
+      Serial.print("Nullwert: "); Serial.println(S[A].NullWert,4);
+      Serial.print("VperAmp:  "); Serial.println(S[A].VperAmp,4);
+      Serial.print("TempAmp:  "); Serial.println(TempAmp,4);
+    } 
+    if (abs(TempAmp) < SCHWELLE) TempAmp = 0;
   
-  return (TempAmp); //TempAmp;
+    return (TempAmp); //TempAmp;
+  #else
+    Serial.println("No ADC present!");
+    return 99;
+  #endif
 }
 float ReadVolt(int V) {
   if (!S[V].Vin) { Serial.println("Vin must not be zero !!!"); return 0; }
@@ -824,7 +833,7 @@ bool  isSensorEmpty(int SNr) {
 }
 void  GoToSleep() {
   gpio_deep_sleep_hold_en();
-  for (int SNr=0; SNr<MAX_PERIPHERALS; SNr++) if (S[SNr].Type = SENS_TYPE_SWITCH) gpio_hold_en((gpio_num_t)S[SNr].IOPort);  
+  for (int SNr=0; SNr<MAX_PERIPHERALS; SNr++) if (S[SNr].Type == SENS_TYPE_SWITCH) gpio_hold_en((gpio_num_t)S[SNr].IOPort);  
   esp_sleep_enable_timer_wakeup(SLEEP_INTERVAL * 1000);
   esp_deep_sleep_start();
 }
