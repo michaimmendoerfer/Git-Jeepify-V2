@@ -1,5 +1,70 @@
+#define NODE_NAME "Jeep_SW1"
+#define VERSION   "V 0.90"
+
 //#define MODULE_4AMP_1VOLT
-#define MODULE_SWITCH_4
+#define MODULE_SWITCH_2
+
+#ifdef MODULE_SWITCH_4
+  #define NODE_TYPE SWITCH_4_WAY
+ 
+  #define NAME_SENSOR_0 "SW-0"
+  #define TYPE_SENSOR_0  SENS_TYPE_SWITCH
+  #define IOPORT_0       1
+  
+  #define NAME_SENSOR_1 "SW-1"
+  #define TYPE_SENSOR_1  SENS_TYPE_SWITCH
+  #define IOPORT_1       2
+  
+  #define NAME_SENSOR_2 "SW-2"
+  #define TYPE_SENSOR_2  SENS_TYPE_SWITCH
+  #define IOPORT_2       3
+  
+  #define NAME_SENSOR_3 "SW-3"
+  #define TYPE_SENSOR_3  SENS_TYPE_SWITCH
+  #define IOPORT_3       4
+#endif
+#ifdef MODULE_SWITCH_2
+  #define NODE_TYPE SWITCH_2_WAY
+ 
+  #define NAME_SENSOR_0 "SW-0"
+  #define TYPE_SENSOR_0  SENS_TYPE_SWITCH
+  #define IOPORT_0       1
+  
+  #define NAME_SENSOR_1 "SW-1"
+  #define TYPE_SENSOR_1  SENS_TYPE_SWITCH
+  #define IOPORT_1       2
+#endif
+
+#ifdef MODULE_4AMP_1VOLT
+  #define NODE_TYPE BATTERY_SENSOR
+  #define ADC_USED       
+ 
+  #define NAME_SENSOR_0 "v2-0"
+  #define TYPE_SENSOR_0  SENS_TYPE_AMP
+  #define NULL_SENSOR_0  3134
+  #define SENS_SENSOR_0  0.066
+
+  #define NAME_SENSOR_1 "v2-1"
+  #define TYPE_SENSOR_1  SENS_TYPE_AMP
+  #define NULL_SENSOR_1  3134
+  #define SENS_SENSOR_1  0.066
+  
+  #define NAME_SENSOR_2 "v2-2"
+  #define TYPE_SENSOR_2  SENS_TYPE_AMP
+  #define NULL_SENSOR_2  3150
+  #define SENS_SENSOR_2  0.066
+
+  #define NAME_SENSOR_3 "v2-3"
+  #define TYPE_SENSOR_3  SENS_TYPE_AMP
+  #define NULL_SENSOR_3  3150
+  #define SENS_SENSOR_3  0.066
+
+  #define NAME_SENSOR_4  "v2-Volt"
+  #define TYPE_SENSOR_4  SENS_TYPE_VOLT
+  #define VIN_SENSOR_4   200
+
+  #define IOPORT_4       5
+#endif
 
 #include <Arduino.h>
 
@@ -37,72 +102,16 @@
   #include <espnow.h>
 #endif 
 
-#define NODE_NAME "Jeep_SW1"
-#define VERSION   "V 0.80"
-
-#ifdef MODULE_SWITCH_4
-  #define NODE_TYPE SWITCH_4_WAY
- 
-  #define NAME_SENSOR_0 "SW-0"
-  #define TYPE_SENSOR_0  SENS_TYPE_SWITCH
-  #define IOPORT_0       1
-  
-  #define NAME_SENSOR_1 "SW-1"
-  #define TYPE_SENSOR_1  SENS_TYPE_SWITCH
-  #define IOPORT_1       2
-  
-  #define NAME_SENSOR_2 "SW-2"
-  #define TYPE_SENSOR_2  SENS_TYPE_SWITCH
-  #define IOPORT_2       3
-  
-  #define NAME_SENSOR_3 "SW-3"
-  #define TYPE_SENSOR_3  SENS_TYPE_SWITCH
-  #define IOPORT_3       4
-  
-#endif
-
-#ifdef MODULE_4AMP_1VOLT
-  #define NODE_TYPE BATTERY_SENSOR
-  #define ADC_USED       
- 
-  #define NAME_SENSOR_0 "v2-0"
-  #define TYPE_SENSOR_0  SENS_TYPE_AMP
-  #define NULL_SENSOR_0  3134
-  #define SENS_SENSOR_0  0.066
-
-  #define NAME_SENSOR_1 "v2-1"
-  #define TYPE_SENSOR_1  SENS_TYPE_AMP
-  #define NULL_SENSOR_1  3134
-  #define SENS_SENSOR_1  0.066
-  
-  #define NAME_SENSOR_2 "v2-2"
-  #define TYPE_SENSOR_2  SENS_TYPE_AMP
-  #define NULL_SENSOR_2  3150
-  #define SENS_SENSOR_2  0.066
-
-  #define NAME_SENSOR_3 "v2-3"
-  #define TYPE_SENSOR_3  SENS_TYPE_AMP
-  #define NULL_SENSOR_3  3150
-  #define SENS_SENSOR_3  0.066
-
-  #define NAME_SENSOR_4  "v2-Volt"
-  #define TYPE_SENSOR_4  SENS_TYPE_VOLT
-  #define VIN_SENSOR_4   200
-
-  #define IOPORT_4       5
-#endif
-
 #ifdef ADC_USED
  Adafruit_ADS1115 ads;
 #endif
+
+#define BOOT_BUTTON 9
 
 RTC_DATA_ATTR struct_Periph S[MAX_PERIPHERALS];
 struct_Peer   P[MAX_PEERS];
 
 struct_Touch Touch;
-
-StaticJsonDocument<500> doc;
-String jsondata;
 
 struct struct_Status {
   String    Msg;
@@ -110,21 +119,26 @@ struct struct_Status {
 };
 
 struct_Status Status[MAX_STATUS];
-u_int8_t TempBroadcast[6];
+volatile u_int8_t TempBroadcast[6];
 
 int PeerCount = 0;
 
 bool Debug         = true;
-bool SleepMode     = false;
-bool ReadyToPair   = true;
+bool SleepMode     = true;
+bool ReadyToPair   = false;
+bool ScreenChanged = false;
 
 int  Mode          = S_STATUS;
 int  OldMode       = 0;
 
-uint32_t TSLastSend    = 0;
-uint32_t TSLastContact = 0;
-uint32_t TSSend = 0;
-uint32_t TSPair = 0;
+volatile uint32_t TSLastSend      = 0;
+volatile uint32_t TSLastContact   = 0;
+volatile uint32_t TSScreenRefresh = 0;
+volatile uint32_t TSBootButton    = 0;
+volatile uint32_t TSSend = 0;
+volatile uint32_t TSPair = 0;
+volatile uint32_t TSTouch= 0;
+
 
 Preferences preferences;
 
@@ -324,6 +338,13 @@ void InitModule() {
       case SENS_TYPE_AMP:    pinMode(S[SNr].IOPort, INPUT ); break;
     }
   }
+  pinMode(BOOT_BUTTON, INPUT);
+
+  #ifdef ADC_USED
+    Wire.begin(D5, D6);
+    ads.setGain(GAIN_TWOTHIRDS);  // 0.1875 mV/Bit .... +- 6,144V
+    ads.begin();
+  #endif
 
   #ifdef TOUCH911_USED
     tp.begin();
@@ -418,6 +439,7 @@ void GetPeers() {
       }
     }
   }
+  if (PeerCount ==0) { ReadyToPair = true; TSPair = millis(); }
   preferences.end();
 }
 void ReportPeers() {
@@ -446,21 +468,7 @@ void RegisterPeers() {
       else {
         Serial.print (" ("); PrintMAC(peerInfo.peer_addr);  Serial.println(") added...");
       }
-/*for (int b=0; b<6; b++) peerInfo.peer_addr[b] = (uint8_t) broadcastAddressMonitor1[b];
-      if (esp_now_add_peer(&peerInfo) != ESP_OK) {
-        PrintMAC(peerInfo.peer_addr); Serial.println(": Failed to add peer");
-      }
-      else {
-        Serial.print (" ("); PrintMAC(peerInfo.peer_addr);  Serial.println(") added...");
-      }
-for (int b=0; b<6; b++) peerInfo.peer_addr[b] = (uint8_t) broadcastAddressMonitor2[b];
-      if (esp_now_add_peer(&peerInfo) != ESP_OK) {
-        PrintMAC(peerInfo.peer_addr); Serial.println(": Failed to add peer");
-      }
-      else {
-        Serial.print (" ("); PrintMAC(peerInfo.peer_addr);  Serial.println(") added...");
-      }
-*/
+
     // Register Peers
     for (int PNr=0; PNr<MAX_PEERS; PNr++) {
       if (!isPeerEmpty(PNr)) {
@@ -508,6 +516,9 @@ void ClearInit() {
 }
 void SendMessage () {
   //sendet NAME0:Value0, NAME1:Value1, SLEEP:Status, DEBUG:Status
+  StaticJsonDocument<500> doc;
+  String jsondata;
+  
   char buf[200];
   doc.clear();
   jsondata = "";
@@ -532,16 +543,15 @@ void SendMessage () {
   doc["Sleep"] = SleepMode;
   doc["Debug"] = Debug;
 
-  serializeJson(doc, jsondata);  
+  Serial.println(serializeJson(doc, jsondata));  
   //senden an alle Monitore
-  ReportPeers();
+  //ReportPeers();
 
   for (int PNr=0; PNr<MAX_PEERS; PNr++) {
-    //Serial.println(P[PNr].Type);
     if (P[PNr].Type >= MONITOR_ROUND) {
       Serial.print("Sending to: "); Serial.println(P[PNr].Name); 
       Serial.print(" ("); PrintMAC(P[PNr].BroadcastAddress); Serial.println(")");
-      esp_now_send(P[PNr].BroadcastAddress, (uint8_t *) jsondata.c_str(), 200);  //Sending "jsondata"  
+      if (esp_now_send(P[PNr].BroadcastAddress, (uint8_t *) jsondata.c_str(), 200) == ESP_OK) Serial.println("ESP_OK");  //Sending "jsondata"  
       Serial.println(jsondata);
       Serial.println();
     }
@@ -552,6 +562,9 @@ void SendMessage () {
 }
 void SendPairingRequest() {
   // sendet auf Broadcast: "addme", T0:Type, N0:Name, T1:Type, N1:Name...
+  StaticJsonDocument<500> doc;
+  String jsondata;
+
   char Buf[100] = {};
 
   jsondata = "";  //clearing String after data is being sent
@@ -574,7 +587,7 @@ void SendPairingRequest() {
   esp_now_send(broadcastAddressAll, (uint8_t *) jsondata.c_str(), 200);  //Sending "jsondata"  
   
   if (Debug) { Serial.print("\nSending: "); Serial.println(jsondata); }
-  AddStatus("Send Pairing request...");                                       
+  AddStatus("Send Pairing request...");                                     
 }
 void SetSleepMode(bool Mode) {
   preferences.begin("JeepifyInit", false);
@@ -588,35 +601,142 @@ void SetDebugMode(bool Mode) {
     if (preferences.getBool("Debug", false) != Debug) preferences.putBool("Debug", Debug);
   preferences.end();
 }
-void ShowEichen() {
-  char Buf[100] = {}; char BufNr[10] = {};
-  
-  if (Debug) Serial.println("Eichen...");
-  preferences.begin("JeepifyInit", false);
-  
-  for(int SNr=0; SNr<MAX_PERIPHERALS; SNr++) {
-    if (S[SNr].Type == SENS_TYPE_AMP) {
-      float TempVal  = 10828; //ads.readADC_SingleEnded(S[SNr].IOPort);
-      float TempVolt = 13;// ads.computeVolts(TempVal);
-      if (Debug) { 
-        Serial.print("TempVal:");     Serial.println(TempVal);
-        Serial.print(", TempVolt: "); Serial.println(TempVolt);
-      }
-      S[SNr].NullWert = TempVolt;
-      sprintf(Buf, "Null-%d", SNr); 
-      preferences.putFloat(Buf, S[SNr].NullWert);
-      if (Debug) {
-        Serial.print("schreibe "); Serial.print(Buf); Serial.print(" = "); Serial.println(S[SNr].NullWert); 
-      }
-
-      dtostrf(TempVolt, 0, 2, BufNr);
-      sprintf(Buf, "Eichen fertig: [%d] %s (Type: %d): Gemessene Spannung bei Null: %sV", SNr, S[SNr].Name, S[SNr].Type, BufNr);
-      Serial.println(Buf);
-      AddStatus(Buf);
-    }
+void ShowVoltCalib(float V) {
+  if (OldMode != Mode) { 
+    TSScreenRefresh = millis(); 
+    #ifdef TFT_USED
+      TFT.fillScreen(TFT_BLACK); 
+    #endif
   }
-  preferences.end();
+  if ((millis() - TSScreenRefresh > 1000) or (Mode != OldMode)) {
+    OldMode = Mode;
+    char Buf[100] = {}; char BufNr[10] = {}; 
+  
+    if (Debug) Serial.println("Volt-Messung kalibrieren...");
+    
+    preferences.begin("JeepifyInit", false);
+    
+    ScreenChanged = true;
+    
+    #ifdef TFT_USED
+    TFT.fillScreen(TFT_BLACK);
+    
+    TFT.loadFont(AA_FONT_LARGE);
+    
+    TFT.setTextColor(TFT_RUBICON, TFT_BLACK);
+    TFT.setTextPadding(469);
+    TFT.setTextDatum(TL_DATUM);
+
+    TFT.drawString("Volt-Messung kalibrieren...", 10, 10);
+    TFT.unloadFont();
+    #endif
+
+    int h=30;
+    for (int SNr=0; SNr<MAX_PERIPHERALS; SNr++){
+      if (S[SNr].Type = SENS_TYPE_VOLT) {
+        int TempRead = analogRead(S[SNr].IOPort);
+        
+        if (Debug) {
+          Serial.print("S["); Serial.print(SNr); Serial.print("].Vin = ");
+          Serial.println(S[SNr].Vin, 4);
+          Serial.print("Volt(nachher) = ");
+          Serial.println(TempRead/S[SNr].Vin, 4);
+        }
+        S[SNr].Vin = TempRead / V;
+        
+        preferences.begin("JeepifyInit", false);
+        preferences.putFloat("Vin", S[SNr].Vin);
+        preferences.end();
+
+        dtostrf(TempRead/S[SNr].Vin, 0, 2, BufNr);
+        sprintf(Buf, "[%d] %s (Type: %d): Spannung ist jetzt: %sV", SNr, S[SNr].Name, S[SNr].Type, BufNr);
+        
+        #ifdef TFT_USED
+          TFT.drawString(Buf, 10, 50+(SNr+1)*h);
+        #endif
+        AddStatus(Buf);
+
+        break;
+      }
+  }
+    delay(5000);
+    
+    Mode = S_MENU;
+    
+    TSScreenRefresh = millis();
+  }
 }
+void ShowEichen() {
+    if (OldMode != Mode) { 
+    TSScreenRefresh = millis(); 
+    #ifdef TFT_USED
+      TFT.fillScreen(TFT_BLACK); 
+    #endif
+  }
+    if ((TSScreenRefresh - millis() > 1000) or (Mode != OldMode)) {
+    char Buf[100] = {}; char BufNr[10] = {};
+  
+    OldMode = Mode;
+    ScreenChanged = true;
+    
+    #ifdef TFT_USED
+    TFT.loadFont(AA_FONT_LARGE);
+    
+    TFT.setTextColor(TFT_RUBICON, TFT_BLACK);
+    TFT.setTextDatum(TC_DATUM);
+
+    TFT.fillScreen(TFT_BLACK);
+  
+    TFT.drawString("Eichen...", 10, 30);
+    TFT.unloadFont();
+    #endif
+
+    if (Debug) Serial.println("Eichen...");
+    
+    #ifdef ADC_USED
+    preferences.begin("JeepifyInit", false);
+
+    int h=20;
+    for(int SNr=0; SNr<MAX_PERIPHERALS; SNr++) {
+      if (S[SNr].Type == SENS_TYPE_AMP) {
+        float TempVal  = ads.readADC_SingleEnded(S[SNr].IOPort);
+        float TempVolt = ads.computeVolts(TempVal);
+        if (Debug) { 
+          Serial.print("TempVal:");     Serial.println(TempVal);
+          Serial.print(", TempVolt: "); Serial.println(TempVolt);
+        }
+        S[SNr].NullWert = TempVolt;
+        sprintf(Buf, "Null-%d", SNr); 
+        preferences.putFloat(Buf, S[SNr].NullWert);
+        if (Debug) {
+          Serial.print("schreibe "); Serial.print(Buf); Serial.print(" = "); Serial.println(S[SNr].NullWert); 
+        }
+
+        dtostrf(TempVolt, 0, 2, BufNr);
+        sprintf(Buf, "Eichen fertig: [%d] %s (Type: %d): Gemessene Spannung bei Null: %sV", SNr, S[SNr].Name, S[SNr].Type, BufNr);
+        
+        #ifdef TFT_USED
+        TFT.loadFont(AA_FONT_SMALL);
+        TFT.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+        TFT.setTextDatum(TC_DATUM);
+        TFT.drawString(Buf, 10, 30+(SNr+1)*h);
+        TFT.unloadFont();
+        #endif
+
+        AddStatus(Buf);
+      }
+    }
+    preferences.end();
+
+    delay(5000);
+    #endif
+    
+    Mode = S_MENU;
+    
+    TSScreenRefresh = millis();
+  }
+}
+
 void AddStatus(String Msg) {
   for (int Si=MAX_STATUS-1; Si>0; Si--) {
     Status[Si].Msg   = Status[Si-1].Msg;
@@ -626,52 +746,68 @@ void AddStatus(String Msg) {
   Status[0].TSMsg = millis();
 }
 void ShowStatus() {
-  for(int SNr=0; SNr<MAX_STATUS; SNr++) {
+  if (OldMode != Mode) { 
+    TSScreenRefresh = millis(); 
+    #ifdef TFT_USED
+      TFT.fillScreen(TFT_BLACK); 
+    #endif
+
+    for(int SNr=0; SNr<MAX_STATUS; SNr++) {
       char Buf[20];
       sprintf(Buf, "%02d:%02d:%02d", (int)Status[SNr].TSMsg/360000%60, (int)Status[SNr].TSMsg/60000%60, (int)Status[SNr].TSMsg/1000%60);
       Serial.println(Buf);
-  }
-}
-void ShowVoltCalib(float V) {
-  char Buf[100] = {}; char BufNr[10] = {}; 
-  if (Debug) Serial.println("Volt eichen...");
-  preferences.begin("JeepifyInit", false);
-  
-  for (int SNr=0; SNr<MAX_PERIPHERALS; SNr++){
-    if (S[SNr].Type == SENS_TYPE_VOLT) {
-      int TempRead = analogRead(S[SNr].IOPort);
-      
-      if (Debug) {
-        Serial.print("S["); Serial.print(SNr); Serial.print("].Vin = ");
-        Serial.println(S[SNr].Vin, 4);
-        Serial.print("Volt(nachher) = ");
-        Serial.println(TempRead/S[SNr].Vin, 4);
-      }
-      S[SNr].Vin = TempRead / V;
-      
-      preferences.begin("JeepifyInit", false);
-      preferences.putFloat("Vin", S[SNr].Vin);
-      preferences.end();
-
-      dtostrf(TempRead/S[SNr].Vin, 0, 2, BufNr);
-      sprintf(Buf, "[%d] %s (Type: %d): Spannung ist jetzt: %sV", SNr, S[SNr].Name, S[SNr].Type, BufNr);
-      
-      Serial.println(Buf);
-      AddStatus(Buf);
-
-      break;
     }
   }
+  if ((TSScreenRefresh - millis() > 1000) or (Mode != OldMode)) {
+    OldMode = Mode;
+
+    #ifdef TFT_USED
+    char Buf[100] = {}; char BufNr[10] = {};
+  
+    OldMode = Mode;
+    ScreenChanged = true;
+
+    TFT.loadFont(AA_FONT_LARGE);
+    
+    TFT.setTextColor(TFT_RUBICON, TFT_BLACK);
+    TFT.setTextPadding(469);
+    TFT.setTextDatum(TL_DATUM);
+
+    TFT.drawString("Status...", 10, 10);
+    TFT.unloadFont();
+
+    TFT.loadFont(AA_FONT_SMALL);
+    TFT.setTextColor(TFT_WHITE, TFT_BLACK);
+    
+    int h=20;
+    for(int SNr=0; SNr<MAX_STATUS; SNr++) {
+      char Buf[20];
+      TFT.drawString(Buf, 10, 40+(SNr+1)*h);
+      TFT.drawString(Status[SNr].Msg, 75, 40+(SNr+1)*h);
+    }
+    TFT.unloadFont();
+    TFT.setTextPadding(0);
+    #endif
+    
+    TSScreenRefresh = millis();
+  }
 }
-#ifdef ESP32 
-    void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
-  #elif defined(ESP8266)
+
+#ifdef ESP32  // void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) 
+    void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {  
+#elif defined(ESP8266)
     void OnDataRecv(uint8_t * mac, uint8_t *incomingData, uint8_t len) {
 #endif
   char* buff = (char*) incomingData;        //char buffer
+  StaticJsonDocument<500> doc;
+  String jsondata;
+  doc.clear();
+  jsondata = "";
   bool PairingSuccess = false;
+  
   jsondata = String(buff);                  //converting into STRING
-  Serial.print("Recieved ");
+  
+  Serial.print("Recieved from: "); PrintMAC(mac); Serial.println();
   Serial.println(jsondata);    //Complete JSON data will be printed here
   
   DeserializationError error = deserializeJson(doc, jsondata);
@@ -718,35 +854,39 @@ void ShowVoltCalib(float V) {
       TSLastContact = millis();
       if (Debug) { Serial.print("LastContact: "); Serial.println(TSLastContact); }
     }
-    if (doc["Order"] == "SleepMode On")  { AddStatus("Sleep: on");  SetSleepMode(true); }
-    if (doc["Order"] == "SleepMode Off") { AddStatus("Sleep: off"); SetSleepMode(false); }
-    if (doc["Order"] == "Debug on")      { AddStatus("Debug: on");  SetDebugMode(true); }
-    if (doc["Order"] == "Debug off")     { AddStatus("Debug: off"); SetDebugMode(false); }
-    if (doc["Order"] == "Reset")         { AddStatus("Clear all"); ClearPeers(); ClearInit(); }
-    if (doc["Order"] == "Restart")       { ESP.restart(); }
-    if (doc["Order"] == "Pair")          { TSPair = millis(); ReadyToPair = true; AddStatus("Pairing beginnt"); }
+    if      (doc["Order"] == "SleepMode On")     { AddStatus("Sleep: on");  SetSleepMode(true);  SendMessage(); }
+    else if (doc["Order"] == "SleepMode Off")    { AddStatus("Sleep: off"); SetSleepMode(false); SendMessage(); }
+    else if (doc["Order"] == "SleepMode Toggle") { if (SleepMode) { AddStatus("Sleep: off"); SetSleepMode(false); SendMessage(); }
+                                                             else { AddStatus("Sleep: on");  SetSleepMode(true);  SendMessage(); }
+                                                 } 
+    else if (doc["Order"] == "Debug on")      { AddStatus("Debug: on");  SetDebugMode(true);  SendMessage(); }
+    else if (doc["Order"] == "Debug off")     { AddStatus("Debug: off"); SetDebugMode(false); SendMessage(); }
+    else if (doc["Order"] == "Debug Toggle")  { if (Debug) { AddStatus("Debug: off"); SetDebugMode(false); SendMessage(); }
+                                                      else { AddStatus("Debug: on");  SetDebugMode(true);  SendMessage(); }
+                                              }
+    else if (doc["Order"] == "Reset")         { AddStatus("Clear all"); ClearPeers(); ClearInit(); }
+    else if (doc["Order"] == "Restart")       { ESP.restart(); }
+    else if (doc["Order"] == "Pair")          { TSPair = millis(); ReadyToPair = true; AddStatus("Pairing beginnt"); SendMessage(); }
 
-    if (doc["Order"] == "Eichen")        { Mode = S_EICHEN;  AddStatus("Eichen beginnt"); ShowEichen(); }
-    if (doc["Order"] == "VoltCalib")     { Mode = S_CAL_VOL; AddStatus("VoltCalib beginnt"); ShowVoltCalib((float)doc["Value"]); }
-    if (doc["Order"] == "ToggleSwitch") {
-      for (int SNr=0; SNr<MAX_PERIPHERALS; SNr++) {
-        if ((S[SNr].Name == doc["Value"]) and (S[SNr].Type == SENS_TYPE_SWITCH)) {
-          S[SNr].Value = !S[SNr].Value; 
-          String Nr = doc["Value"];
-          AddStatus("ToggleSwitch "+Nr);
-          UpdateSwitches();
-        }
-      }
-    }      
+    else if (doc["Order"] == "Eichen")        { Mode = S_EICHEN;  AddStatus("Eichen beginnt"); ShowEichen(); }
+    else if (doc["Order"] == "VoltCalib")     { Mode = S_CAL_VOL; AddStatus("VoltCalib beginnt"); ShowVoltCalib((float)doc["Value"]); }
+    else if (doc["Order"] == "ToggleSwitch")  { for (int SNr=0; SNr<MAX_PERIPHERALS; SNr++) {
+                                                  if ((S[SNr].Name == doc["Value"]) and (S[SNr].Type == SENS_TYPE_SWITCH)) {
+                                                    S[SNr].Value = !S[SNr].Value; 
+                                                    String Nr = doc["Value"];
+                                                    AddStatus("ToggleSwitch "+Nr);
+                                                    UpdateSwitches();
+                                                  }
+                                                }
+                                              }      
   } // end (!error)
   else {  // error
         Serial.print(F("deserializeJson() failed: "));  //Just in case of an ERROR of ArduinoJSon
         Serial.println(error.f_str());
-        return;
   }
 }
 void UpdateSwitches() {
-  for (int SNr=0; SNr<MAX_PERIPHERALS; SNr++) if (S[SNr].Type == SENS_TYPE_SWITCH) digitalWrite(S[SNr].IOPort, S[SNr].Value);
+  for (int SNr=0; SNr<MAX_PERIPHERALS; SNr++) if (S[SNr].Type == SENS_TYPE_SWITCH) digitalWrite(S[SNr].IOPort, !S[SNr].Value);
   SendMessage();
 }
 #ifdef ESP32 
@@ -768,12 +908,6 @@ void OnDataSent(uint8_t *mac_addr, uint8_t sendStatus) {
 
 void setup() {
   Serial.begin(74880);
-
-  #ifdef ADC_USED
-    Wire.begin(D5, D6);
-    ads.setGain(GAIN_TWOTHIRDS);  // 0.1875 mV/Bit .... +- 6,144V
-    ads.begin();
-  #endif
 
   WiFi.mode(WIFI_STA);
   
@@ -799,20 +933,73 @@ void setup() {
 
   for (int SNr=0; SNr<MAX_PERIPHERALS; SNr++) if (S[SNr].Type == SENS_TYPE_SWITCH) gpio_hold_dis((gpio_num_t)S[SNr].IOPort);  
   gpio_deep_sleep_hold_dis();
+  UpdateSwitches();
 
 }
 void loop() {
+  if  ((millis() - TSTouch) > TOUCH_INTERVAL) {
+    TSTouch = millis();
+
+    int BB = !digitalRead(BOOT_BUTTON);
+    //Serial.println(BB);
+    if (BB == 1) {
+      if (!TSBootButton) TSBootButton = millis();
+      else {
+        if ((millis() - TSBootButton) > 3000) {
+          Serial.println("Button pressed... Clearing Peers and Reset");
+          ClearPeers();
+          ESP.restart(); 
+        }
+      }
+    }
+    else TSBootButton = 0;
+
+    #ifdef TOUCH911_USED
+    int G;
+    G = TouchRead();
+
+    switch (Mode) {
+      case S_PAIRING:
+        switch (G) {
+          case CLICK:      Mode = S_STATUS; break;
+        }
+        break;
+      case S_STATUS:
+        switch (G) {
+          case CLICK:      Mode = S_PAIRING; break;
+          case LONG_PRESS: ClearPeers(); ESP.restart(); break;
+        }
+        break;
+    }
+  #endif
+  }
+  
   if  ((millis() - TSSend ) > MSG_INTERVAL  ) {
     TSSend = millis();
     if (ReadyToPair) SendPairingRequest();
-    SendMessage();
+    else SendMessage();
   }
   if (((millis() - TSPair ) > PAIR_INTERVAL ) and (ReadyToPair)) {
     TSPair = 0;
     ReadyToPair = false;
     AddStatus("Pairing beendet...");
   }
-  if  (((millis() - TSLastContact) > SLEEP_INTERVAL ) and (SleepMode)) GoToSleep();
+  int Diff = millis() - TSLastContact;
+  //Serial.println(Diff);
+  if (Diff > SLEEP_INTERVAL) {
+    if (SleepMode) {
+      Serial.print("Going to sleep at: "); Serial.println(millis());
+      Serial.print("LastContact    at: "); Serial.println(TSLastContact);
+      GoToSleep();
+    }
+  }
+  
+  #ifdef TFT_USED
+  switch (Mode) {
+    case S_PAIRING: ShowPairingScreen();
+    case S_STATUS:  ShowStatus();
+  }
+  #endif
 }
 float ReadAmp (int A) {
   #ifdef ADC_USED
@@ -856,8 +1043,32 @@ bool  isSensorEmpty(int SNr) {
   return (S[SNr].Type == 0);
 }
 void  GoToSleep() {
+  StaticJsonDocument<500> doc;
+  String jsondata;
+
+  char Buf[100] = {};
+
+  jsondata = "";  //clearing String after data is being sent
+  doc.clear();
+  
+  doc["Node"] = NODE_NAME;   
+  doc["Type"] = NODE_TYPE;
+  doc["Msg"]  = "GoodBye - going to sleep";
+  
+  serializeJson(doc, jsondata);  
+
+  esp_now_send(broadcastAddressAll, (uint8_t *) jsondata.c_str(), 200);  //Sending "jsondata"  
+  
+  if (Debug) { Serial.print("\nSending: "); Serial.println(jsondata); }
+  AddStatus("Send Going to sleep..."); 
+  
+  Serial.print("Going to sleep at: "); Serial.println(millis());
+  Serial.print("LastContact    at: "); Serial.println(TSLastContact);
+  
   gpio_deep_sleep_hold_en();
+  
   for (int SNr=0; SNr<MAX_PERIPHERALS; SNr++) if (S[SNr].Type == SENS_TYPE_SWITCH) gpio_hold_en((gpio_num_t)S[SNr].IOPort);  
+  
   esp_sleep_enable_timer_wakeup(SLEEP_INTERVAL * 1000);
   esp_deep_sleep_start();
 }
