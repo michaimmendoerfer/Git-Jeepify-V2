@@ -1,8 +1,9 @@
-#define NODE_NAME "Jeep_SW1"
+#define NODE_NAME "Jeep_SW4"
 #define VERSION   "V 0.90"
 
 //#define MODULE_4AMP_1VOLT
-#define MODULE_SWITCH_2
+//#define MODULE_SWITCH_2
+#define MODULE_SWITCH_4
 
 #ifdef MODULE_SWITCH_4
   #define NODE_TYPE SWITCH_4_WAY
@@ -135,10 +136,10 @@ volatile uint32_t TSLastSend      = 0;
 volatile uint32_t TSLastContact   = 0;
 volatile uint32_t TSScreenRefresh = 0;
 volatile uint32_t TSBootButton    = 0;
-volatile uint32_t TSSend = 0;
-volatile uint32_t TSPair = 0;
-volatile uint32_t TSTouch= 0;
-
+volatile uint32_t TSSend  = 0;
+volatile uint32_t TSPair  = 0;
+volatile uint32_t TSTouch = 0;
+volatile uint32_t TSLed   = 0;
 
 Preferences preferences;
 
@@ -166,6 +167,7 @@ void   ClearInit();
 void   ShowPairingScreen();
 void   ShowEichen();
 void   ShowVoltCalib(float V);
+void   ShowMessage(String Msg);
 void   UpdateSwitches();
 
 void   SetSleepMode(bool Mode);
@@ -173,13 +175,11 @@ void   SetDebugMode(bool Mode);
 void   AddStatus(String Msg);
 void   ShowStatus();
 
-void   Eichen();
 void   PrintMAC(const uint8_t * mac_addr);
 
 bool   isPeerEmpty(int PNr);
 bool   isSensorEmpty(int SNr);
 void   GoToSleep();
-
 
 void InitModule() {
   preferences.begin("JeepifyInit", true);
@@ -516,6 +516,9 @@ void ClearInit() {
 }
 void SendMessage () {
   //sendet NAME0:Value0, NAME1:Value1, SLEEP:Status, DEBUG:Status
+  TSLed = millis();
+  digitalWrite(8, HIGH);
+
   StaticJsonDocument<500> doc;
   String jsondata;
   
@@ -667,19 +670,13 @@ void ShowVoltCalib(float V) {
   }
 }
 void ShowEichen() {
-    if (OldMode != Mode) { 
-    TSScreenRefresh = millis(); 
-    #ifdef TFT_USED
-      TFT.fillScreen(TFT_BLACK); 
-    #endif
-  }
-    if ((TSScreenRefresh - millis() > 1000) or (Mode != OldMode)) {
+  if (OldMode != Mode) { 
     char Buf[100] = {}; char BufNr[10] = {};
-  
-    OldMode = Mode;
-    ScreenChanged = true;
+    
+    TSScreenRefresh = millis(); 
     
     #ifdef TFT_USED
+    TFT.fillScreen(TFT_BLACK);
     TFT.loadFont(AA_FONT_LARGE);
     
     TFT.setTextColor(TFT_RUBICON, TFT_BLACK);
@@ -693,14 +690,23 @@ void ShowEichen() {
 
     if (Debug) Serial.println("Eichen...");
     
-    #ifdef ADC_USED
     preferences.begin("JeepifyInit", false);
 
     int h=20;
     for(int SNr=0; SNr<MAX_PERIPHERALS; SNr++) {
       if (S[SNr].Type == SENS_TYPE_AMP) {
-        float TempVal  = ads.readADC_SingleEnded(S[SNr].IOPort);
-        float TempVolt = ads.computeVolts(TempVal);
+        float TempVal  = 0;
+        float TempVolt = 0;
+        
+        #ifdef ADC_USED
+        TempVal  = ads.readADC_SingleEnded(S[SNr].IOPort);
+        TempVolt = ads.computeVolts(TempVal);
+        #else
+        //Filter implementieren !!!
+        TempVal  = analogRead(S[SNr].IOPort);
+        TempVolt = 3.3/4095*TempVal;
+        #endif      
+
         if (Debug) { 
           Serial.print("TempVal:");     Serial.println(TempVal);
           Serial.print(", TempVolt: "); Serial.println(TempVolt);
@@ -727,16 +733,44 @@ void ShowEichen() {
       }
     }
     preferences.end();
-
-    delay(5000);
-    #endif
-    
-    Mode = S_MENU;
+  }
+  
+  if ((TSScreenRefresh - millis() > 1000) or (Mode != OldMode)) {
+    OldMode = Mode;
+    ScreenChanged = true;
     
     TSScreenRefresh = millis();
   }
 }
+void ShowMessage(String Msg) {
+  if (OldMode != Mode) { 
+    TSScreenRefresh = millis(); 
+    #ifdef TFT_USED
+      TFT.fillScreen(TFT_BLACK); 
+    #endif
+  }
+  if ((TSScreenRefresh - millis() > 1000) or (Mode != OldMode)) {
+    OldMode = Mode;
 
+    #ifdef TFT_USED
+    OldMode = Mode;
+    ScreenChanged = true;
+
+    TFT.loadFont(AA_FONT_LARGE);
+    
+    TFT.setTextColor(TFT_RUBICON, TFT_BLACK);
+    TFT.setTextPadding(469);
+    TFT.setTextDatum(TL_DATUM);
+
+    TFT.drawString(MSg, 10, 10);
+    TFT.unloadFont();
+
+    TFT.setTextPadding(0);
+    #endif
+    
+    TSScreenRefresh = millis();
+  }
+}
 void AddStatus(String Msg) {
   for (int Si=MAX_STATUS-1; Si>0; Si--) {
     Status[Si].Msg   = Status[Si-1].Msg;
@@ -792,120 +826,10 @@ void ShowStatus() {
     TSScreenRefresh = millis();
   }
 }
-
-#ifdef ESP32  // void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) 
-    void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {  
-#elif defined(ESP8266)
-    void OnDataRecv(uint8_t * mac, uint8_t *incomingData, uint8_t len) {
-#endif
-  char* buff = (char*) incomingData;        //char buffer
-  StaticJsonDocument<500> doc;
-  String jsondata;
-  doc.clear();
-  jsondata = "";
-  bool PairingSuccess = false;
-  
-  jsondata = String(buff);                  //converting into STRING
-  
-  Serial.print("Recieved from: "); PrintMAC(mac); Serial.println();
-  Serial.println(jsondata);    //Complete JSON data will be printed here
-  
-  DeserializationError error = deserializeJson(doc, jsondata);
-  
-  if (!error) {
-    Serial.println("No Error");
-    
-    if ((doc["Pairing"] == "you are paired") and (doc["Peer"] == NODE_NAME)) { 
-      Serial.println("in you are paired und node");
-    
-      bool exists = esp_now_is_peer_exist(mac);
-      if (exists) { 
-        PrintMAC(mac); Serial.println(" already exists...");
-      }
-      else {
-        for (int PNr=0; PNr<MAX_PEERS; PNr++) {
-          Serial.print("P["); Serial.print(PNr); Serial.print("].Type = "); Serial.println(P[PNr].Type);
-          if ((P[PNr].Type == 0) and (!PairingSuccess)) {
-            Serial.println("leerer Slot gefunden");
-            P[PNr].Type = (int) doc["Type"];
-            strcpy(P[PNr].Name, doc["Node"]);
-            
-            for (int b = 0; b < 6; b++ ) P[PNr].BroadcastAddress[b] = mac[b];
-            P[PNr].TSLastSeen = millis();
-            
-            PairingSuccess = true; 
-            SavePeers();
-            RegisterPeers();
-            
-            if (Debug) {
-              Serial.print("Adding in slot: "); Serial.println(PNr);
-              Serial.print("Name: "); Serial.print(P[PNr].Name);
-              Serial.print(" (");PrintMAC(P[PNr].BroadcastAddress); Serial.println(")\n");
-              Serial.print("Saving Peers after received new one...");
-              ReportPeers();
-            }
-            ReadyToPair = false;
-          }
-        }
-        if (!PairingSuccess) { PrintMAC(mac); Serial.println(" adding failed..."); } 
-      }
-    }
-    if (doc["Order"] == "stay alive") {
-      TSLastContact = millis();
-      if (Debug) { Serial.print("LastContact: "); Serial.println(TSLastContact); }
-    }
-    if      (doc["Order"] == "SleepMode On")     { AddStatus("Sleep: on");  SetSleepMode(true);  SendMessage(); }
-    else if (doc["Order"] == "SleepMode Off")    { AddStatus("Sleep: off"); SetSleepMode(false); SendMessage(); }
-    else if (doc["Order"] == "SleepMode Toggle") { if (SleepMode) { AddStatus("Sleep: off"); SetSleepMode(false); SendMessage(); }
-                                                             else { AddStatus("Sleep: on");  SetSleepMode(true);  SendMessage(); }
-                                                 } 
-    else if (doc["Order"] == "Debug on")      { AddStatus("Debug: on");  SetDebugMode(true);  SendMessage(); }
-    else if (doc["Order"] == "Debug off")     { AddStatus("Debug: off"); SetDebugMode(false); SendMessage(); }
-    else if (doc["Order"] == "Debug Toggle")  { if (Debug) { AddStatus("Debug: off"); SetDebugMode(false); SendMessage(); }
-                                                      else { AddStatus("Debug: on");  SetDebugMode(true);  SendMessage(); }
-                                              }
-    else if (doc["Order"] == "Reset")         { AddStatus("Clear all"); ClearPeers(); ClearInit(); }
-    else if (doc["Order"] == "Restart")       { ESP.restart(); }
-    else if (doc["Order"] == "Pair")          { TSPair = millis(); ReadyToPair = true; AddStatus("Pairing beginnt"); SendMessage(); }
-
-    else if (doc["Order"] == "Eichen")        { Mode = S_EICHEN;  AddStatus("Eichen beginnt"); ShowEichen(); }
-    else if (doc["Order"] == "VoltCalib")     { Mode = S_CAL_VOL; AddStatus("VoltCalib beginnt"); ShowVoltCalib((float)doc["Value"]); }
-    else if (doc["Order"] == "ToggleSwitch")  { for (int SNr=0; SNr<MAX_PERIPHERALS; SNr++) {
-                                                  if ((S[SNr].Name == doc["Value"]) and (S[SNr].Type == SENS_TYPE_SWITCH)) {
-                                                    S[SNr].Value = !S[SNr].Value; 
-                                                    String Nr = doc["Value"];
-                                                    AddStatus("ToggleSwitch "+Nr);
-                                                    UpdateSwitches();
-                                                  }
-                                                }
-                                              }      
-  } // end (!error)
-  else {  // error
-        Serial.print(F("deserializeJson() failed: "));  //Just in case of an ERROR of ArduinoJSon
-        Serial.println(error.f_str());
-  }
-}
 void UpdateSwitches() {
   for (int SNr=0; SNr<MAX_PERIPHERALS; SNr++) if (S[SNr].Type == SENS_TYPE_SWITCH) digitalWrite(S[SNr].IOPort, !S[SNr].Value);
   SendMessage();
 }
-#ifdef ESP32 
-void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) { 
-  Serial.print("\r\nLast Packet Send Status:\t");
-  Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
-}
-#elif defined(ESP8266)
-void OnDataSent(uint8_t *mac_addr, uint8_t sendStatus) {
-  Serial.print("Last Packet Send Status: ");
-  if (sendStatus == 0){
-    Serial.println("Delivery success");
-  }
-  else{
-    Serial.println("Delivery fail");
-  }
-}
-#endif
-
 void setup() {
   Serial.begin(74880);
 
@@ -947,6 +871,7 @@ void loop() {
       else {
         if ((millis() - TSBootButton) > 3000) {
           Serial.println("Button pressed... Clearing Peers and Reset");
+          AddStatus("Clearing Peers and Reset");
           ClearPeers();
           ESP.restart(); 
         }
@@ -993,34 +918,46 @@ void loop() {
       GoToSleep();
     }
   }
+  if  (((millis() - TSLed) > 300) and (TSLed)) {
+    TSLed = 0;
+    digitalWrite(8, LOW);
+  }
   
   #ifdef TFT_USED
   switch (Mode) {
-    case S_PAIRING: ShowPairingScreen();
-    case S_STATUS:  ShowStatus();
+    case S_PAIRING: ShowPairingScreen(); break;
+    case S_STATUS:  ShowStatus();        break;
+    case M_Menu:    break;
   }
   #endif
 }
-float ReadAmp (int A) {
-  #ifdef ADC_USED
-    float TempVal  = ads.readADC_SingleEnded(S[A].IOPort);
-    float TempVolt = ads.computeVolts(TempVal); 
-    float TempAmp  = (TempVolt - S[A].NullWert) / S[A].VperAmp;
-
-    if (Debug) {
-      Serial.print("TempVal:  "); Serial.println(TempVal,4);
-      Serial.print("TempVolt: "); Serial.println(TempVolt,4);
-      Serial.print("Nullwert: "); Serial.println(S[A].NullWert,4);
-      Serial.print("VperAmp:  "); Serial.println(S[A].VperAmp,4);
-      Serial.print("TempAmp:  "); Serial.println(TempAmp,4);
-    } 
-    if (abs(TempAmp) < SCHWELLE) TempAmp = 0;
+float ReadAmp (int Si) {
+  float TempVal      = 0;
+  float TempVolt     = 0;
+  float TempAmp      = 0;
+  float TempVoltOverNull = 0;
   
-    return (TempAmp); //TempAmp;
+  #ifdef ADC_USED // Werte auslesen
+    TempVal  = ads.readADC_SingleEnded(S[Si].IOPort);
+    TempVolt = ads.computeVolts(TempVal); 
+    TempAmp  = (TempVolt - S[Si].NullWert) / S[Si].VperAmp;
   #else
-    Serial.println("No ADC present!");
-    return 99;
+    TempVal  = analogRead(S[Si].IOPort);
+    TempVolt = 3.3/4095*TempVal;
+    TempVoltOverNull = 3.3/4095 * (TempVal - S[Si].NullWert);
+    TempAmp = TempVoltOverNull/S[Si].VperAmp * 1,5; // 1.5 wegen Voltage-Devider
   #endif
+  
+  if (Debug) {
+    Serial.print("TempVal:  "); Serial.println(TempVal,4);
+    Serial.print("TempVolt: "); Serial.println(TempVolt,4);
+    Serial.print("Nullwert: "); Serial.println(S[Si].NullWert,4);
+    Serial.print("VperAmp:  "); Serial.println(S[Si].VperAmp,4);
+    Serial.print("TempAmp:  "); Serial.println(TempAmp,4);
+  } 
+  if (abs(TempAmp) < SCHWELLE) TempAmp = 0;
+
+  return (TempAmp); //TempAmp;
 }
 float ReadVolt(int V) {
   if (!S[V].Vin) { Serial.println("Vin must not be zero !!!"); return 0; }
@@ -1129,5 +1066,115 @@ int   TouchRead() {
   Touch.TouchedOld = Touch.Touched;  
 
   return ret;
+}
+#endif
+
+#ifdef ESP32  // void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) 
+    void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {  
+#elif defined(ESP8266)
+    void OnDataRecv(uint8_t * mac, uint8_t *incomingData, uint8_t len) {
+#endif
+  char* buff = (char*) incomingData;        //char buffer
+  StaticJsonDocument<500> doc;
+  String jsondata;
+  doc.clear();
+  jsondata = "";
+  bool PairingSuccess = false;
+  
+  jsondata = String(buff);                  //converting into STRING
+  
+  Serial.print("Recieved from: "); PrintMAC(mac); Serial.println();
+  Serial.println(jsondata);    //Complete JSON data will be printed here
+  
+  DeserializationError error = deserializeJson(doc, jsondata);
+  
+  if (!error) {
+    Serial.println("No Error");
+    
+    if ((doc["Pairing"] == "you are paired") and (doc["Peer"] == NODE_NAME)) { 
+      Serial.println("in you are paired und node");
+    
+      bool exists = esp_now_is_peer_exist(mac);
+      if (exists) { 
+        PrintMAC(mac); Serial.println(" already exists...");
+      }
+      else {
+        for (int PNr=0; PNr<MAX_PEERS; PNr++) {
+          Serial.print("P["); Serial.print(PNr); Serial.print("].Type = "); Serial.println(P[PNr].Type);
+          if ((P[PNr].Type == 0) and (!PairingSuccess)) {
+            Serial.println("leerer Slot gefunden");
+            P[PNr].Type = (int) doc["Type"];
+            strcpy(P[PNr].Name, doc["Node"]);
+            
+            for (int b = 0; b < 6; b++ ) P[PNr].BroadcastAddress[b] = mac[b];
+            P[PNr].TSLastSeen = millis();
+            
+            PairingSuccess = true; 
+            SavePeers();
+            RegisterPeers();
+            
+            if (Debug) {
+              Serial.print("Adding in slot: "); Serial.println(PNr);
+              Serial.print("Name: "); Serial.print(P[PNr].Name);
+              Serial.print(" (");PrintMAC(P[PNr].BroadcastAddress); Serial.println(")\n");
+              Serial.print("Saving Peers after received new one...");
+              ReportPeers();
+            }
+            ReadyToPair = false;
+          }
+        }
+        if (!PairingSuccess) { PrintMAC(mac); Serial.println(" adding failed..."); } 
+      }
+    }
+    if (doc["Order"] == "stay alive") {
+      TSLastContact = millis();
+      if (Debug) { Serial.print("LastContact: "); Serial.println(TSLastContact); }
+    }
+    if      (doc["Order"] == "SleepMode On")     { AddStatus("Sleep: on");  SetSleepMode(true);  SendMessage(); }
+    else if (doc["Order"] == "SleepMode Off")    { AddStatus("Sleep: off"); SetSleepMode(false); SendMessage(); }
+    else if (doc["Order"] == "SleepMode Toggle") { if (SleepMode) { AddStatus("Sleep: off"); SetSleepMode(false); SendMessage(); }
+                                                             else { AddStatus("Sleep: on");  SetSleepMode(true);  SendMessage(); }
+                                                 } 
+    else if (doc["Order"] == "Debug on")      { AddStatus("Debug: on");  SetDebugMode(true);  SendMessage(); }
+    else if (doc["Order"] == "Debug off")     { AddStatus("Debug: off"); SetDebugMode(false); SendMessage(); }
+    else if (doc["Order"] == "Debug Toggle")  { if (Debug) { AddStatus("Debug: off"); SetDebugMode(false); SendMessage(); }
+                                                      else { AddStatus("Debug: on");  SetDebugMode(true);  SendMessage(); }
+                                              }
+    else if (doc["Order"] == "Reset")         { AddStatus("Clear all"); ClearPeers(); ClearInit(); }
+    else if (doc["Order"] == "Restart")       { ESP.restart(); }
+    else if (doc["Order"] == "Pair")          { TSPair = millis(); ReadyToPair = true; AddStatus("Pairing beginnt"); SendMessage(); }
+
+    else if (doc["Order"] == "Eichen")        { Mode = S_EICHEN;  AddStatus("Eichen beginnt"); ShowEichen(); }
+    else if (doc["Order"] == "VoltCalib")     { Mode = S_CAL_VOL; AddStatus("VoltCalib beginnt"); ShowVoltCalib((float)doc["Value"]); }
+    else if (doc["Order"] == "ToggleSwitch")  { for (int SNr=0; SNr<MAX_PERIPHERALS; SNr++) {
+                                                  if ((S[SNr].Name == doc["Value"]) and (S[SNr].Type == SENS_TYPE_SWITCH)) {
+                                                    S[SNr].Value = !S[SNr].Value; 
+                                                    String Nr = doc["Value"];
+                                                    AddStatus("ToggleSwitch "+Nr);
+                                                    UpdateSwitches();
+                                                  }
+                                                }
+                                              }      
+  } // end (!error)
+  else {  // error
+        Serial.print(F("deserializeJson() failed: "));  //Just in case of an ERROR of ArduinoJSon
+        Serial.println(error.f_str());
+  }
+}
+
+#ifdef ESP32 //void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) 
+void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) { 
+  Serial.print("\r\nLast Packet Send Status:\t");
+  Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
+}
+#elif defined(ESP8266)
+void OnDataSent(uint8_t *mac_addr, uint8_t sendStatus) {
+  Serial.print("Last Packet Send Status: ");
+  if (sendStatus == 0){
+    Serial.println("Delivery success");
+  }
+  else{
+    Serial.println("Delivery fail");
+  }
 }
 #endif
