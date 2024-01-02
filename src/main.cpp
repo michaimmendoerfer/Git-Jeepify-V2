@@ -1,5 +1,5 @@
 #define NODE_NAME "Jeep_SW4"
-#define VERSION   "V 0.90"
+#define VERSION   "V 0.91"
 
 //#define MODULE_4AMP_1VOLT
 //#define MODULE_SWITCH_2
