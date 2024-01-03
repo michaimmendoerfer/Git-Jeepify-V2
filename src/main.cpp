@@ -1,26 +1,28 @@
-#define NODE_NAME "Jeep_SW4"
+#include <Arduino.h>
+
+#define NODE_NAME "Jeep_BT1"
 #define VERSION   "V 0.91"
 
-//#define MODULE_4AMP_1VOLT
+#define MODULE_4AMP_1VOLT
 //#define MODULE_SWITCH_2
-#define MODULE_SWITCH_4
+//#define MODULE_SWITCH_4
 
 #ifdef MODULE_SWITCH_4
   #define NODE_TYPE SWITCH_4_WAY
  
-  #define NAME_SENSOR_0 "SW-0"
+  #define NAME_SENSOR_0 "4-SW-0"
   #define TYPE_SENSOR_0  SENS_TYPE_SWITCH
   #define IOPORT_0       1
   
-  #define NAME_SENSOR_1 "SW-1"
+  #define NAME_SENSOR_1 "4-SW-1"
   #define TYPE_SENSOR_1  SENS_TYPE_SWITCH
   #define IOPORT_1       2
   
-  #define NAME_SENSOR_2 "SW-2"
+  #define NAME_SENSOR_2 "4-SW-2"
   #define TYPE_SENSOR_2  SENS_TYPE_SWITCH
   #define IOPORT_2       3
   
-  #define NAME_SENSOR_3 "SW-3"
+  #define NAME_SENSOR_3 "4-SW-3"
   #define TYPE_SENSOR_3  SENS_TYPE_SWITCH
   #define IOPORT_3       4
 #endif
@@ -40,34 +42,35 @@
   #define NODE_TYPE BATTERY_SENSOR
   #define ADC_USED       
  
-  #define NAME_SENSOR_0 "v2-0"
+  #define NAME_SENSOR_0 "Bat1-0"
   #define TYPE_SENSOR_0  SENS_TYPE_AMP
   #define NULL_SENSOR_0  3134
   #define SENS_SENSOR_0  0.066
+  #define IOPORT_0       0
 
-  #define NAME_SENSOR_1 "v2-1"
+  #define NAME_SENSOR_1 "Bat1-1"
   #define TYPE_SENSOR_1  SENS_TYPE_AMP
   #define NULL_SENSOR_1  3134
   #define SENS_SENSOR_1  0.066
+  #define IOPORT_1       1
   
-  #define NAME_SENSOR_2 "v2-2"
+  #define NAME_SENSOR_2 "Bat1-2"
   #define TYPE_SENSOR_2  SENS_TYPE_AMP
   #define NULL_SENSOR_2  3150
   #define SENS_SENSOR_2  0.066
-
-  #define NAME_SENSOR_3 "v2-3"
+  #define IOPORT_2       2
+  
+  #define NAME_SENSOR_3 "Bat1-3"
   #define TYPE_SENSOR_3  SENS_TYPE_AMP
   #define NULL_SENSOR_3  3150
   #define SENS_SENSOR_3  0.066
-
-  #define NAME_SENSOR_4  "v2-Volt"
+  #define IOPORT_3       3
+  
+  #define NAME_SENSOR_4  "Bat1-V"
   #define TYPE_SENSOR_4  SENS_TYPE_VOLT
   #define VIN_SENSOR_4   200
-
-  #define IOPORT_4       5
+  #define IOPORT_4       PIN_A0
 #endif
-
-#include <Arduino.h>
 
 #ifdef ADC_USED
   #include <Adafruit_ADS1X15.h>
@@ -109,7 +112,12 @@
 
 #define BOOT_BUTTON 9
 
-RTC_DATA_ATTR struct_Periph S[MAX_PERIPHERALS];
+#ifdef ESP32
+  RTC_DATA_ATTR struct_Periph S[MAX_PERIPHERALS];
+#elif defined(ESP8266)
+  struct_Periph S[MAX_PERIPHERALS];
+#endif 
+
 struct_Peer   P[MAX_PEERS];
 
 struct_Touch Touch;
@@ -126,7 +134,7 @@ int PeerCount = 0;
 
 bool Debug         = true;
 bool SleepMode     = true;
-bool ReadyToPair   = false;
+bool ReadyToPair   = true;
 bool ScreenChanged = false;
 
 int  Mode          = S_STATUS;
@@ -534,6 +542,7 @@ void SendMessage () {
     }
     if (S[SNr].Type == SENS_TYPE_AMP) {
       S[SNr].Value = ReadAmp(SNr);
+      if ((S[SNr].Value < -50) or (S[SNr].Value> 50)) S[SNr].Value = -99;
       dtostrf(S[SNr].Value, 0, 2, buf);
       doc[S[SNr].Name] = buf;
     }
@@ -554,7 +563,7 @@ void SendMessage () {
     if (P[PNr].Type >= MONITOR_ROUND) {
       Serial.print("Sending to: "); Serial.println(P[PNr].Name); 
       Serial.print(" ("); PrintMAC(P[PNr].BroadcastAddress); Serial.println(")");
-      if (esp_now_send(P[PNr].BroadcastAddress, (uint8_t *) jsondata.c_str(), 200) == ESP_OK) Serial.println("ESP_OK");  //Sending "jsondata"  
+      if (esp_now_send(P[PNr].BroadcastAddress, (uint8_t *) jsondata.c_str(), 200) == 0) Serial.println("ESP_OK");  //Sending "jsondata"  
       Serial.println(jsondata);
       Serial.println();
     }
@@ -855,8 +864,11 @@ void setup() {
   
   TSLastContact = millis();
 
+  #ifdef ESP32
   for (int SNr=0; SNr<MAX_PERIPHERALS; SNr++) if (S[SNr].Type == SENS_TYPE_SWITCH) gpio_hold_dis((gpio_num_t)S[SNr].IOPort);  
-  gpio_deep_sleep_hold_dis();
+  gpio_deep_sleep_hold_dis(); 
+  #endif 
+  
   UpdateSwitches();
 
 }
@@ -1002,12 +1014,16 @@ void  GoToSleep() {
   Serial.print("Going to sleep at: "); Serial.println(millis());
   Serial.print("LastContact    at: "); Serial.println(TSLastContact);
   
+  #ifdef ESP32
   gpio_deep_sleep_hold_en();
-  
   for (int SNr=0; SNr<MAX_PERIPHERALS; SNr++) if (S[SNr].Type == SENS_TYPE_SWITCH) gpio_hold_en((gpio_num_t)S[SNr].IOPort);  
   
   esp_sleep_enable_timer_wakeup(SLEEP_INTERVAL * 1000);
   esp_deep_sleep_start();
+  #elif defined(ESP8266)
+  ESP.deepSleep(SLEEP_INTERVAL * 1000);
+  #endif
+
 }
 void  PrintMAC(const uint8_t * mac_addr){
   char macStr[18];
