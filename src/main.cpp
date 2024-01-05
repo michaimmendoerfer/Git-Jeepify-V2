@@ -1,9 +1,10 @@
 #include <Arduino.h>
 
-#define NODE_NAME "Jeep_BT1"
-#define VERSION   "V 0.91"
+#define NODE_NAME "Jeep_BT2"
+#define VERSION   "V 1.0"
 
-#define MODULE_4AMP_1VOLT
+#define MODULE_4AMP_1VOLT_NOADC
+//#define MODULE_4AMP_1VOLT
 //#define MODULE_SWITCH_2
 //#define MODULE_SWITCH_4
 
@@ -37,7 +38,6 @@
   #define TYPE_SENSOR_1  SENS_TYPE_SWITCH
   #define IOPORT_1       2
 #endif
-
 #ifdef MODULE_4AMP_1VOLT
   #define NODE_TYPE BATTERY_SENSOR
   #define ADC_USED       
@@ -71,13 +71,43 @@
   #define VIN_SENSOR_4   200
   #define IOPORT_4       PIN_A0
 #endif
+#ifdef MODULE_4AMP_1VOLT_NOADC
+  #define NODE_TYPE BATTERY_SENSOR
+  
+  #define NAME_SENSOR_0 "Solar"
+  #define TYPE_SENSOR_0  SENS_TYPE_AMP
+  #define NULL_SENSOR_0  3134
+  #define SENS_SENSOR_0  0.066
+  #define IOPORT_0       34
 
+  #define NAME_SENSOR_1 "Intern"
+  #define TYPE_SENSOR_1  SENS_TYPE_AMP
+  #define NULL_SENSOR_1  3134
+  #define SENS_SENSOR_1  0.066
+  #define IOPORT_1       35
+  
+  #define NAME_SENSOR_2 "Extern"
+  #define TYPE_SENSOR_2  SENS_TYPE_AMP
+  #define NULL_SENSOR_2  3150
+  #define SENS_SENSOR_2  0.066
+  #define IOPORT_2       32
+  
+  #define NAME_SENSOR_3 "Load"
+  #define TYPE_SENSOR_3  SENS_TYPE_AMP
+  #define NULL_SENSOR_3  3150
+  #define SENS_SENSOR_3  0.066
+  #define IOPORT_3       33
+  
+  #define NAME_SENSOR_4  "LiPo"
+  #define TYPE_SENSOR_4  SENS_TYPE_VOLT
+  #define VIN_SENSOR_4   200
+  #define IOPORT_4       39
+#endif
 #ifdef ADC_USED
   #include <Adafruit_ADS1X15.h>
   #include <Wire.h>
   #include <Spi.h>
 #endif
-
 #ifdef TFT_USED
   #include <TFT_eSPI.h>
   #include "NotoSansBold15.h"
@@ -90,6 +120,30 @@
   #include "TAMC_GT911.h"
   int TouchRead();
   TAMC_GT911 tp = TAMC_GT911(TOUCH_SDA, TOUCH_SCL, TOUCH_INT, TOUCH_RST, TOUCH_WIDTH, TOUCH_HEIGHT);
+#endif
+
+#ifdef ESP8266 // ESP8266_MRD_USE_RTC false
+  #define ESP8266_MRD_USE_RTC   false  
+#endif
+#define ESP_MRD_USE_LITTLEFS           true
+#define MULTIRESETDETECTOR_DEBUG       true  //false
+#define MRD_TIMES               3
+#define MRD_TIMEOUT             10
+#define MRD_ADDRESS             0
+
+#include <ESP_MultiResetDetector.h>
+
+MultiResetDetector* mrd;
+
+#ifdef ESP32 // LED-Setup
+  #ifndef LED_BUILTIN
+    #define LED_BUILTIN 2         
+  #endif
+  #define LED_OFF     LOW
+  #define LED_ON      HIGH
+#else
+  #define LED_ON      LOW
+  #define LED_OFF     HIGH
 #endif
 
 #include "C:\Users\micha\Documents\PlatformIO\Projects\jeepify.h"
@@ -840,7 +894,24 @@ void UpdateSwitches() {
   SendMessage();
 }
 void setup() {
+  pinMode(LED_BUILTIN, OUTPUT);
+
   Serial.begin(74880);
+
+  mrd = new MultiResetDetector(MRD_TIMEOUT, MRD_ADDRESS);
+
+  if (mrd->detectMultiReset())
+  {
+    Serial.println("Multi Reset Detected");
+    digitalWrite(LED_BUILTIN, LED_ON);
+    ClearPeers();
+    ReadyToPair = true; TSPair = millis();
+  }
+  else
+  {
+    Serial.println("No Multi Reset Detected");
+    digitalWrite(LED_BUILTIN, LED_OFF);
+  }
 
   WiFi.mode(WIFI_STA);
   
