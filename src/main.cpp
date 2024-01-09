@@ -1,36 +1,37 @@
 #include <Arduino.h>
 
-#define NODE_NAME "8266-2"
+#define NODE_NAME "8266-1"
 #define VERSION   "V 1.0"
 
 #pragma region Module_Definitions
 //#define MODULE_4AMP_1VOLT_NOADC
-//#define MODULE_4AMP_1VOLT
 //#define MODULE_SWITCH_2
-#define MODULE_SWITCH_4
+//#define MODULE_SWITCH_4
+#define MODULE_4AMP_1VOLT
 
 #ifdef MODULE_SWITCH_4
   #define NODE_TYPE SWITCH_4_WAY
   #define RELAY_TYPE     1 // -1 bei reversed
  
-  #define NAME_SENSOR_0 "Big-0"
+  #define NAME_SENSOR_0 "M3-SW0"
   #define TYPE_SENSOR_0  SENS_TYPE_SWITCH
-  #define IOPORT_0       4
+  #define IOPORT_0       1
   
-  #define NAME_SENSOR_1 "Big-1"
+  #define NAME_SENSOR_1 "M3-SW1"
   #define TYPE_SENSOR_1  SENS_TYPE_SWITCH
-  #define IOPORT_1       14
+  #define IOPORT_1       2
   
-  #define NAME_SENSOR_2 "Big-2"
+  #define NAME_SENSOR_2 "M3-SW2"
   #define TYPE_SENSOR_2  SENS_TYPE_SWITCH
-  #define IOPORT_2       12
+  #define IOPORT_2       3
   
-  #define NAME_SENSOR_3 "Big-3"
+  #define NAME_SENSOR_3 "M3-SW3"
   #define TYPE_SENSOR_3  SENS_TYPE_SWITCH
-  #define IOPORT_3       13
+  #define IOPORT_3       4
 #endif
 #ifdef MODULE_SWITCH_2
   #define NODE_TYPE SWITCH_2_WAY
+  #define RELAY_TYPE    -1 // 1-normal, -1 bei reversed
  
   #define NAME_SENSOR_0 "SW-0"
   #define TYPE_SENSOR_0  SENS_TYPE_SWITCH
@@ -42,7 +43,8 @@
 #endif
 #ifdef MODULE_4AMP_1VOLT
   #define NODE_TYPE BATTERY_SENSOR
-  #define ADC_USED       
+  #define ADC_USED 
+  #define RELAY_TYPE     1 // 1-normal, -1 bei reversed      
  
   #define NAME_SENSOR_0 "Extern"
   #define TYPE_SENSOR_0  SENS_TYPE_AMP
@@ -75,7 +77,8 @@
 #endif
 #ifdef MODULE_4AMP_1VOLT_NOADC
   #define NODE_TYPE BATTERY_SENSOR
-  
+  #define RELAY_TYPE     1 // 1-normal, -1 bei reversed
+ 
   #define NAME_SENSOR_0 "Solar"
   #define TYPE_SENSOR_0  SENS_TYPE_AMP
   #define NULL_SENSOR_0  3134
@@ -250,13 +253,14 @@ bool   isPeerEmpty(int PNr);
 bool   isSensorEmpty(int SNr);
 void   GoToSleep();
 #pragma endregion Function_Definitions
-//
+
 void InitModule() {
   preferences.begin("JeepifyInit", true);
   Debug     = preferences.getBool("Debug", true);
   SleepMode = preferences.getBool("SleepMode", false);
   preferences.end();
   
+#pragma region SET_SENSOR_VALUES
   #ifdef NAME_SENSOR_0
     strcpy(S[0].Name, NAME_SENSOR_0);
     S[0].Type     = TYPE_SENSOR_0;
@@ -393,7 +397,8 @@ void InitModule() {
       S[7].Vin = VIN_SENSOR_7;
     #endif 
   #endif
-
+  #pragma endregion SET_SENSOR_VALUES
+  
   for (int SNr=0; SNr<MAX_PERIPHERALS; SNr++)  { // PinMode
     switch (S[SNr].Type) {
       case SENS_TYPE_SWITCH: pinMode(S[SNr].IOPort, OUTPUT); break;
@@ -705,7 +710,6 @@ void ShowVoltCalib(float V) {
     TFT.unloadFont();
     #endif
 
-    int h=30;
     for (int SNr=0; SNr<MAX_PERIPHERALS; SNr++){
       if (S[SNr].Type = SENS_TYPE_VOLT) {
         int TempRead = analogRead(S[SNr].IOPort);
@@ -726,6 +730,7 @@ void ShowVoltCalib(float V) {
         sprintf(Buf, "[%d] %s (Type: %d): Spannung ist jetzt: %sV", SNr, S[SNr].Name, S[SNr].Type, BufNr);
         
         #ifdef TFT_USED
+          int h=30;
           TFT.drawString(Buf, 10, 50+(SNr+1)*h);
         #endif
         AddStatus(Buf);
@@ -763,7 +768,6 @@ void ShowEichen() {
     
     preferences.begin("JeepifyInit", false);
 
-    int h=20;
     for(int SNr=0; SNr<MAX_PERIPHERALS; SNr++) {
       if (S[SNr].Type == SENS_TYPE_AMP) {
         float TempVal  = 0;
@@ -793,6 +797,7 @@ void ShowEichen() {
         sprintf(Buf, "Eichen fertig: [%d] %s (Type: %d): Gemessene Spannung bei Null: %sV", SNr, S[SNr].Name, S[SNr].Type, BufNr);
         
         #ifdef TFT_USED
+        int h=20;
         TFT.loadFont(AA_FONT_SMALL);
         TFT.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
         TFT.setTextDatum(TC_DATUM);
@@ -898,14 +903,14 @@ void ShowStatus() {
   }
 }
 void UpdateSwitches() {
-  for (int SNr=0; SNr<MAX_PERIPHERALS; SNr++) if (S[SNr].Type == SENS_TYPE_SWITCH) digitalWrite(S[SNr].IOPort, !S[SNr].Value);
+  for (int SNr=0; SNr<MAX_PERIPHERALS; SNr++) if (S[SNr].Type == SENS_TYPE_SWITCH) digitalWrite(S[SNr].IOPort, S[SNr].Value*RELAY_TYPE);
   SendMessage();
 }
 void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
 
   Serial.begin(74880);
-  Serial.println("Start...");
+
   mrd = new MultiResetDetector(MRD_TIMEOUT, MRD_ADDRESS);
 
   if (mrd->detectMultiReset()) {
@@ -1022,13 +1027,13 @@ float ReadAmp (int Si) {
   float TempVal      = 0;
   float TempVolt     = 0;
   float TempAmp      = 0;
-  float TempVoltOverNull = 0;
   
   #ifdef ADC_USED // Werte auslesen
     TempVal  = ads.readADC_SingleEnded(S[Si].IOPort);
     TempVolt = ads.computeVolts(TempVal); 
     TempAmp  = (TempVolt - S[Si].NullWert) / S[Si].VperAmp;
   #else
+    float TempVoltOverNull = 0;
     TempVal  = analogRead(S[Si].IOPort);
     TempVolt = 3.3/4095*TempVal;
     TempVoltOverNull = 3.3/4095 * (TempVal - S[Si].NullWert);
@@ -1069,8 +1074,6 @@ bool  isSensorEmpty(int SNr) {
 void  GoToSleep() {
   StaticJsonDocument<500> doc;
   String jsondata;
-
-  char Buf[100] = {};
 
   jsondata = "";  //clearing String after data is being sent
   doc.clear();
@@ -1159,11 +1162,11 @@ int   TouchRead() {
   return ret;
 }
 #endif
-
-#ifdef ESP32  // void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) 
-    void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {  
+#pragma region OnDataRecv
+#ifdef ESP32  
+void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {  
 #elif defined(ESP8266)
-    void OnDataRecv(uint8_t * mac, uint8_t *incomingData, uint8_t len) {
+void OnDataRecv(uint8_t * mac, uint8_t *incomingData, uint8_t len) {
 #endif
   char* buff = (char*) incomingData;        //char buffer
   StaticJsonDocument<500> doc;
@@ -1253,7 +1256,8 @@ int   TouchRead() {
         Serial.println(error.f_str());
   }
 }
-
+#pragma endregion OnDataRecv
+#pragma region OnDataSent
 #ifdef ESP32 //void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) 
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) { 
   Serial.print("\r\nLast Packet Send Status:\t");
@@ -1270,3 +1274,4 @@ void OnDataSent(uint8_t *mac_addr, uint8_t sendStatus) {
   }
 }
 #endif
+#pragma endregion OnDataSent
