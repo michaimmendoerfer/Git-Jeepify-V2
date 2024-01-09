@@ -1,31 +1,31 @@
 #include <Arduino.h>
 
-#define NODE_NAME "8266-1"
+#define NODE_NAME "8266-2"
 #define VERSION   "V 1.0"
 
 //#define MODULE_4AMP_1VOLT_NOADC
-#define MODULE_4AMP_1VOLT
+//#define MODULE_4AMP_1VOLT
 //#define MODULE_SWITCH_2
-//#define MODULE_SWITCH_4
+#define MODULE_SWITCH_4
 
 #ifdef MODULE_SWITCH_4
   #define NODE_TYPE SWITCH_4_WAY
  
-  #define NAME_SENSOR_0 "M3-SW0"
+  #define NAME_SENSOR_0 "Big-0"
   #define TYPE_SENSOR_0  SENS_TYPE_SWITCH
-  #define IOPORT_0       1
+  #define IOPORT_0       4
   
-  #define NAME_SENSOR_1 "M3-SW1"
+  #define NAME_SENSOR_1 "Big-1"
   #define TYPE_SENSOR_1  SENS_TYPE_SWITCH
-  #define IOPORT_1       2
+  #define IOPORT_1       14
   
-  #define NAME_SENSOR_2 "M3-SW2"
+  #define NAME_SENSOR_2 "Big-2"
   #define TYPE_SENSOR_2  SENS_TYPE_SWITCH
-  #define IOPORT_2       3
+  #define IOPORT_2       12
   
-  #define NAME_SENSOR_3 "M3-SW3"
+  #define NAME_SENSOR_3 "Big-3"
   #define TYPE_SENSOR_3  SENS_TYPE_SWITCH
-  #define IOPORT_3       4
+  #define IOPORT_3       13
 #endif
 #ifdef MODULE_SWITCH_2
   #define NODE_TYPE SWITCH_2_WAY
@@ -898,14 +898,14 @@ void ShowStatus() {
   }
 }
 void UpdateSwitches() {
-  for (int SNr=0; SNr<MAX_PERIPHERALS; SNr++) if (S[SNr].Type == SENS_TYPE_SWITCH) digitalWrite(S[SNr].IOPort, !S[SNr].Value);
+  for (int SNr=0; SNr<MAX_PERIPHERALS; SNr++) if (S[SNr].Type == SENS_TYPE_SWITCH) digitalWrite(S[SNr].IOPort, S[SNr].Value);
   SendMessage();
 }
 void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
 
   Serial.begin(74880);
-
+  Serial.println("Start...");
   mrd = new MultiResetDetector(MRD_TIMEOUT, MRD_ADDRESS);
 
   if (mrd->detectMultiReset())
