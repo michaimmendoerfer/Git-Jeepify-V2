@@ -1,5 +1,3 @@
-#include <Arduino.h>
-
 #define NODE_NAME "8266-1"
 #define VERSION   "V 1.0"
 
@@ -157,6 +155,7 @@ MultiResetDetector* mrd;
 #endif
 #pragma endregion LED-setup
 #pragma region Includes
+#include <Arduino.h>
 #include "C:\Users\micha\Documents\PlatformIO\Projects\jeepify.h"
 #include <ArduinoJson.h>
 #include <Preferences.h>
