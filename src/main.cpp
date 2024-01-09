@@ -3,13 +3,15 @@
 #define NODE_NAME "8266-1"
 #define VERSION   "V 1.0"
 
+#pragma region Module_Definitions
 //#define MODULE_4AMP_1VOLT_NOADC
-#define MODULE_4AMP_1VOLT
 //#define MODULE_SWITCH_2
 //#define MODULE_SWITCH_4
+#define MODULE_4AMP_1VOLT
 
 #ifdef MODULE_SWITCH_4
   #define NODE_TYPE SWITCH_4_WAY
+  #define RELAY_TYPE     1 // -1 bei reversed
  
   #define NAME_SENSOR_0 "M3-SW0"
   #define TYPE_SENSOR_0  SENS_TYPE_SWITCH
@@ -103,10 +105,15 @@
   #define VIN_SENSOR_4   200
   #define IOPORT_4       39
 #endif
+#pragma endregion Module_Definitions
+#pragma region Board_specific(ADC, TFT, TOUCH, BUTTONS)
+#define BOOT_BUTTON 9 // ESP-C3 SuperMini
+
 #ifdef ADC_USED
   #include <Adafruit_ADS1X15.h>
   #include <Wire.h>
   #include <Spi.h>
+  Adafruit_ADS1115 ads;
 #endif
 #ifdef TFT_USED
   #include <TFT_eSPI.h>
@@ -121,7 +128,6 @@
   int TouchRead();
   TAMC_GT911 tp = TAMC_GT911(TOUCH_SDA, TOUCH_SCL, TOUCH_INT, TOUCH_RST, TOUCH_WIDTH, TOUCH_HEIGHT);
 #endif
-
 #ifdef ESP8266 // ESP8266_MRD_USE_RTC false
   #define ESP8266_MRD_USE_RTC   false  
 #endif
@@ -134,8 +140,9 @@
 #include <ESP_MultiResetDetector.h>
 
 MultiResetDetector* mrd;
-
-#ifdef ESP32 // LED-Setup
+#pragma endregion Board_specific(ADC, TFT, TOUCH)
+#pragma region LED-setup
+#ifdef ESP32 
   #ifndef LED_BUILTIN
     #define LED_BUILTIN 2         
   #endif
@@ -145,46 +152,39 @@ MultiResetDetector* mrd;
   #define LED_ON      LOW
   #define LED_OFF     HIGH
 #endif
-
+#pragma endregion LED-setup
+#pragma region Includes
 #include "C:\Users\micha\Documents\PlatformIO\Projects\jeepify.h"
 #include <ArduinoJson.h>
 #include <Preferences.h>
-
+#pragma region ESP_NOW
 #ifdef ESP32
   #include <esp_now.h>
   #include <WiFi.h>
-  #define D5 14
-  #define D6 12
 #elif defined(ESP8266)
   #include <ESP8266WiFi.h>
   #include <espnow.h>
 #endif 
-
-#ifdef ADC_USED
- Adafruit_ADS1115 ads;
+#pragma endregion ESP_NOW
+#pragma endregion Includes
+#pragma region Globals
+#ifndef D5
+  #define D5 14
 #endif
-
-#define BOOT_BUTTON 9
-
-#ifdef ESP32
-  RTC_DATA_ATTR struct_Periph S[MAX_PERIPHERALS];
-#elif defined(ESP8266)
-  struct_Periph S[MAX_PERIPHERALS];
-#endif 
-
-struct_Peer   P[MAX_PEERS];
-
-struct_Touch Touch;
+#ifndef D6
+  #define D6 12
+#endif
 
 struct struct_Status {
   String    Msg;
   uint32_t  TSMsg;
 };
 
+struct_Peer   P[MAX_PEERS];
+struct_Touch Touch;
 struct_Status Status[MAX_STATUS];
-volatile u_int8_t TempBroadcast[6];
 
-int PeerCount = 0;
+volatile u_int8_t TempBroadcast[6];
 
 bool Debug         = true;
 bool SleepMode     = true;
@@ -193,6 +193,7 @@ bool ScreenChanged = false;
 
 int  Mode          = S_STATUS;
 int  OldMode       = 0;
+int  PeerCount = 0;
 
 volatile uint32_t TSLastSend      = 0;
 volatile uint32_t TSLastContact   = 0;
@@ -205,18 +206,24 @@ volatile uint32_t TSLed   = 0;
 
 Preferences preferences;
 
-float  ReadAmp (int A);
-float  ReadVolt(int V);
-void   SendMessage();
-void   SendPairingRequest();
-
-#ifdef ESP32 
+#ifdef ESP32
+  RTC_DATA_ATTR struct_Periph S[MAX_PERIPHERALS];
+#elif defined(ESP8266)
+  struct_Periph S[MAX_PERIPHERALS];
+#endif 
+#pragma endregion Globals
+#pragma region Function_Definitions
+#ifdef ESP32 // void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len);
     void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len);
     void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status);
   #elif defined(ESP8266)
     void OnDataRecv(uint8_t * mac, uint8_t *incomingData, uint8_t len);
     void OnDataSent(uint8_t *mac_addr, uint8_t sendStatus);
-#endif  // ESP32
+#endif  
+float  ReadAmp (int A);
+float  ReadVolt(int V);
+void   SendMessage();
+void   SendPairingRequest();
 
 void   InitModule();
 void   SavePeers();
@@ -242,6 +249,7 @@ void   PrintMAC(const uint8_t * mac_addr);
 bool   isPeerEmpty(int PNr);
 bool   isSensorEmpty(int SNr);
 void   GoToSleep();
+#pragma endregion Function_Definitions
 
 void InitModule() {
   preferences.begin("JeepifyInit", true);
@@ -266,7 +274,6 @@ void InitModule() {
       S[0].Vin = VIN_SENSOR_0;
     #endif 
   #endif
-
   #ifdef NAME_SENSOR_1
     strcpy(S[1].Name, NAME_SENSOR_1);
     S[1].Type     = TYPE_SENSOR_1;
@@ -284,7 +291,6 @@ void InitModule() {
       S[1].Vin = VIN_SENSOR_1;
     #endif
   #endif
-
   #ifdef NAME_SENSOR_2
     strcpy(S[2].Name, NAME_SENSOR_2);
     S[2].Type     = TYPE_SENSOR_2;
@@ -302,7 +308,6 @@ void InitModule() {
       S[2].Vin = VIN_SENSOR_2;
     #endif
   #endif
-
   #ifdef NAME_SENSOR_3
     strcpy(S[3].Name, NAME_SENSOR_3);
     S[3].Type     = TYPE_SENSOR_3;
@@ -320,7 +325,6 @@ void InitModule() {
       S[3].Vin = VIN_SENSOR_3;
     #endif
   #endif
-
   #ifdef NAME_SENSOR_4
     strcpy(S[4].Name, NAME_SENSOR_4);
     S[4].Type     = TYPE_SENSOR_4;
@@ -338,7 +342,6 @@ void InitModule() {
       S[4].Vin = VIN_SENSOR_4;
     #endif
   #endif
-
   #ifdef NAME_SENSOR_5
     strcpy(S[5].Name, NAME_SENSOR_5);
     S[5].Type     = TYPE_SENSOR_5;
@@ -356,7 +359,6 @@ void InitModule() {
       S[5].Vin = VIN_SENSOR_5;
     #endif 
   #endif
-
   #ifdef NAME_SENSOR_6
     strcpy(S[6].Name, NAME_SENSOR_6);
     S[6].Type     = TYPE_SENSOR_6;
@@ -374,7 +376,6 @@ void InitModule() {
       S[6].Vin = VIN_SENSOR_6;
     #endif
   #endif
-
   #ifdef NAME_SENSOR_7
     strcpy(S[7].Name, NAME_SENSOR_7);
     S[7].Type     = TYPE_SENSOR_7;
@@ -393,7 +394,7 @@ void InitModule() {
     #endif 
   #endif
 
-  for (int SNr=0; SNr<MAX_PERIPHERALS; SNr++)  {
+  for (int SNr=0; SNr<MAX_PERIPHERALS; SNr++)  { // PinMode
     switch (S[SNr].Type) {
       case SENS_TYPE_SWITCH: pinMode(S[SNr].IOPort, OUTPUT); break;
       case SENS_TYPE_VOLT:   pinMode(S[SNr].IOPort, INPUT ); break;
@@ -407,12 +408,10 @@ void InitModule() {
     ads.setGain(GAIN_TWOTHIRDS);  // 0.1875 mV/Bit .... +- 6,144V
     ads.begin();
   #endif
-
   #ifdef TOUCH911_USED
     tp.begin();
     tp.setRotation(ROTATION_LEFT);
   #endif
-
   #ifdef TFT_USED
     pinMode(TFT_BL, OUTPUT);
     digitalWrite(TFT_BL, TFT_BACKLIGHT_ON);
@@ -420,8 +419,6 @@ void InitModule() {
     TFT.setRotation(3);
     TFT.fillScreen(TFT_BLACK);
   #endif
-  
-  Serial.println("InitModule() fertig...");
 }
 void SavePeers() {
   // Speichert alle bekannten Peers
@@ -590,7 +587,7 @@ void ClearInit() {
 void SendMessage () {
   //sendet NAME0:Value0, NAME1:Value1, SLEEP:Status, DEBUG:Status
   TSLed = millis();
-  digitalWrite(8, HIGH);
+  digitalWrite(LED_BUILTIN, LED_ON);
 
   StaticJsonDocument<500> doc;
   String jsondata;
@@ -636,6 +633,9 @@ void SendMessage () {
 }
 void SendPairingRequest() {
   // sendet auf Broadcast: "addme", T0:Type, N0:Name, T1:Type, N1:Name...
+  TSLed = millis();
+  digitalWrite(LED_BUILTIN, LED_ON);
+  
   StaticJsonDocument<500> doc;
   String jsondata;
 
@@ -898,7 +898,7 @@ void ShowStatus() {
   }
 }
 void UpdateSwitches() {
-  for (int SNr=0; SNr<MAX_PERIPHERALS; SNr++) if (S[SNr].Type == SENS_TYPE_SWITCH) digitalWrite(S[SNr].IOPort, !S[SNr].Value);
+  for (int SNr=0; SNr<MAX_PERIPHERALS; SNr++) if (S[SNr].Type == SENS_TYPE_SWITCH) digitalWrite(S[SNr].IOPort, S[SNr].Value*RELAY_TYPE);
   SendMessage();
 }
 void setup() {
@@ -908,15 +908,13 @@ void setup() {
 
   mrd = new MultiResetDetector(MRD_TIMEOUT, MRD_ADDRESS);
 
-  if (mrd->detectMultiReset())
-  {
+  if (mrd->detectMultiReset()) {
     Serial.println("Multi Reset Detected");
     digitalWrite(LED_BUILTIN, LED_ON);
     ClearPeers();
     ReadyToPair = true; TSPair = millis();
   }
-  else
-  {
+  else {
     Serial.println("No Multi Reset Detected");
     digitalWrite(LED_BUILTIN, LED_OFF);
   }
@@ -933,7 +931,6 @@ void setup() {
   esp_now_register_send_cb(OnDataSent);
   esp_now_register_recv_cb(OnDataRecv);    
 
-  //ClearPeers();
   InitModule();     AddStatus("Init Module");
   GetPeers();       AddStatus("Get Peers");
   ReportPeers();    
@@ -949,7 +946,6 @@ void setup() {
   #endif 
   
   UpdateSwitches();
-
 }
 void loop() {
   if  ((millis() - TSTouch) > TOUCH_INTERVAL) {
@@ -986,8 +982,8 @@ void loop() {
           case LONG_PRESS: ClearPeers(); ESP.restart(); break;
         }
         break;
-    }
-  #endif
+      }
+      #endif
   }
   
   if  ((millis() - TSSend ) > MSG_INTERVAL  ) {
@@ -1011,7 +1007,7 @@ void loop() {
   }
   if  (((millis() - TSLed) > 300) and (TSLed)) {
     TSLed = 0;
-    digitalWrite(8, LOW);
+    digitalWrite(LED_BUILTIN, LED_OFF);
   }
   
   #ifdef TFT_USED
