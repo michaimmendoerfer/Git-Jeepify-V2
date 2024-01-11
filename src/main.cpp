@@ -1,11 +1,15 @@
-#define NODE_NAME "8266-1"
-#define VERSION   "V 1.0"
+#define NODE_NAME "c3-1"
+#define VERSION   "V 1.10"
+
+bool FakeMode = true;
 
 #pragma region Module_Definitions
-//#define MODULE_4AMP_1VOLT_NOADC
+#define MODULE_C3
+
+#define MODULE_4AMP_1VOLT_NOADC
 //#define MODULE_SWITCH_2
 //#define MODULE_SWITCH_4
-#define MODULE_4AMP_1VOLT
+//#define MODULE_4AMP_1VOLT
 
 #ifdef MODULE_SWITCH_4
   #define NODE_TYPE SWITCH_4_WAY
@@ -81,30 +85,30 @@
   #define TYPE_SENSOR_0  SENS_TYPE_AMP
   #define NULL_SENSOR_0  3134
   #define SENS_SENSOR_0  0.066
-  #define IOPORT_0       34
+  #define IOPORT_0       0 //34
 
   #define NAME_SENSOR_1 "Intern"
   #define TYPE_SENSOR_1  SENS_TYPE_AMP
   #define NULL_SENSOR_1  3134
   #define SENS_SENSOR_1  0.066
-  #define IOPORT_1       35
+  #define IOPORT_1       1 //35
   
   #define NAME_SENSOR_2 "Extern"
   #define TYPE_SENSOR_2  SENS_TYPE_AMP
   #define NULL_SENSOR_2  3150
   #define SENS_SENSOR_2  0.066
-  #define IOPORT_2       32
+  #define IOPORT_2       3 //32
   
   #define NAME_SENSOR_3 "Load"
   #define TYPE_SENSOR_3  SENS_TYPE_AMP
   #define NULL_SENSOR_3  3150
   #define SENS_SENSOR_3  0.066
-  #define IOPORT_3       33
+  #define IOPORT_3       4 //33
   
   #define NAME_SENSOR_4  "LiPo"
   #define TYPE_SENSOR_4  SENS_TYPE_VOLT
   #define VIN_SENSOR_4   200
-  #define IOPORT_4       39
+  #define IOPORT_4       5 //39
 #endif
 #pragma endregion Module_Definitions
 #pragma region Board_specific(ADC, TFT, TOUCH, BUTTONS)
@@ -129,6 +133,7 @@
   int TouchRead();
   TAMC_GT911 tp = TAMC_GT911(TOUCH_SDA, TOUCH_SCL, TOUCH_INT, TOUCH_RST, TOUCH_WIDTH, TOUCH_HEIGHT);
 #endif
+#ifndef MODULE_C3 // wenn c3 dann kein MRD
 #ifdef ESP8266 // ESP8266_MRD_USE_RTC false
   #define ESP8266_MRD_USE_RTC   false  
 #endif
@@ -141,6 +146,7 @@
 #include <ESP_MultiResetDetector.h>
 
 MultiResetDetector* mrd;
+#endif
 #pragma endregion Board_specific(ADC, TFT, TOUCH)
 #pragma region LED-setup
 #ifdef ESP32 
@@ -257,6 +263,7 @@ void InitModule() {
   preferences.begin("JeepifyInit", true);
   Debug     = preferences.getBool("Debug", true);
   SleepMode = preferences.getBool("SleepMode", false);
+  FakeMode  = preferences.getBool("FakeMode", true);
   preferences.end();
   
 #pragma region SET_SENSOR_VALUES
@@ -508,7 +515,6 @@ void GetPeers() {
 void ReportPeers() {
   char Buf[200]; String ZName;
 
-  Serial.println(); Serial.print(NODE_NAME); Serial.print(", I´m a ");
   switch (NODE_TYPE) {
           case SWITCH_1_WAY:   ZName = "1-way PDC";   break;
           case SWITCH_2_WAY:   ZName = "2-way PDC";   break;
@@ -516,8 +522,9 @@ void ReportPeers() {
           case SWITCH_8_WAY:   ZName = "8-way PDC";   break;
           case PDC_SENSOR_MIX: ZName = "PDC-MIX";     break;
           case BATTERY_SENSOR: ZName = "Batt.-Sens."; break;
-        }
-  Serial.println(ZName);
+  }
+
+  Serial.println(); Serial.print(NODE_NAME); Serial.print(", I am a "); Serial.println(ZName);
   Serial.println("Report-Peers:");
   for (int PNr=0; PNr<MAX_PEERS; PNr++) {
     if (Debug) {
@@ -596,7 +603,7 @@ void SendMessage () {
   StaticJsonDocument<500> doc;
   String jsondata;
   
-  char buf[200];
+  char buf[250];
   doc.clear();
   jsondata = "";
 
@@ -608,18 +615,21 @@ void SendMessage () {
     }
     if (S[SNr].Type == SENS_TYPE_AMP) {
       S[SNr].Value = ReadAmp(SNr);
+      if (FakeMode) S[SNr].Value = random(0,30);
       if ((S[SNr].Value < -50) or (S[SNr].Value> 50)) S[SNr].Value = -99;
       dtostrf(S[SNr].Value, 0, 2, buf);
       doc[S[SNr].Name] = buf;
     }
     if (S[SNr].Type == SENS_TYPE_VOLT) {
       S[SNr].Value = ReadVolt(SNr);
+      if (FakeMode) S[SNr].Value = random(10,15);
       dtostrf(S[SNr].Value, 0, 2, buf);
       doc[S[SNr].Name] = buf;
     }
   }
   doc["Sleep"] = SleepMode;
   doc["Debug"] = Debug;
+  doc["Fake"]  = FakeMode;
 
   serializeJson(doc, jsondata);  
 
@@ -666,6 +676,12 @@ void SendPairingRequest() {
   
   if (Debug) { Serial.print("\nSending: "); Serial.println(jsondata); }
   AddStatus("Send Pairing request...");                                     
+}
+void SetFakeMode(bool Mode) {
+  preferences.begin("JeepifyInit", false);
+    FakeMode = Mode;
+    if (preferences.getBool("FakeMode", false) != FakeMode) preferences.putBool("FakeMode", FakeMode);
+  preferences.end();
 }
 void SetSleepMode(bool Mode) {
   preferences.begin("JeepifyInit", false);
@@ -910,6 +926,7 @@ void setup() {
 
   Serial.begin(74880);
 
+  #ifndef MODULE_C3
   mrd = new MultiResetDetector(MRD_TIMEOUT, MRD_ADDRESS);
 
   if (mrd->detectMultiReset()) {
@@ -922,6 +939,7 @@ void setup() {
     Serial.println("No Multi Reset Detected");
     digitalWrite(LED_BUILTIN, LED_OFF);
   }
+  #endif
 
   WiFi.mode(WIFI_STA);
   
@@ -1031,12 +1049,14 @@ float ReadAmp (int Si) {
     TempVal  = ads.readADC_SingleEnded(S[Si].IOPort);
     TempVolt = ads.computeVolts(TempVal); 
     TempAmp  = (TempVolt - S[Si].NullWert) / S[Si].VperAmp;
+    delay(10);
   #else
     float TempVoltOverNull = 0;
     TempVal  = analogRead(S[Si].IOPort);
     TempVolt = 3.3/4095*TempVal;
     TempVoltOverNull = 3.3/4095 * (TempVal - S[Si].NullWert);
     TempAmp = TempVoltOverNull/S[Si].VperAmp * 1,5; // 1.5 wegen Voltage-Devider
+    delay(10);
   #endif
   
   if (Debug) {
@@ -1233,6 +1253,11 @@ void OnDataRecv(uint8_t * mac, uint8_t *incomingData, uint8_t len) {
     else if (doc["Order"] == "Debug off")     { AddStatus("Debug: off"); SetDebugMode(false); SendMessage(); }
     else if (doc["Order"] == "Debug Toggle")  { if (Debug) { AddStatus("Debug: off"); SetDebugMode(false); SendMessage(); }
                                                       else { AddStatus("Debug: on");  SetDebugMode(true);  SendMessage(); }
+                                              }
+    else if (doc["Order"] == "Fake on")      { AddStatus("Fake: on");  SetFakeMode(true);  SendMessage(); }
+    else if (doc["Order"] == "Fake off")     { AddStatus("Fake: off"); SetFakeMode(false); SendMessage(); }
+    else if (doc["Order"] == "Fake Toggle")  { if (FakeMode) { AddStatus("Fake: off"); SetFakeMode(false); SendMessage(); }
+                                                        else { AddStatus("Fake: on");  SetFakeMode(true);  SendMessage(); }
                                               }
     else if (doc["Order"] == "Reset")         { AddStatus("Clear all"); ClearPeers(); ClearInit(); ESP.restart(); }
     else if (doc["Order"] == "Restart")       { ESP.restart(); }
