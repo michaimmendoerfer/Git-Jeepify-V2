@@ -1,8 +1,6 @@
 #define NODE_NAME "c3-1"
 #define VERSION   "V 1.10"
 
-bool FakeMode = true;
-
 #pragma region Module_Definitions
 #define MODULE_C3
 
@@ -196,6 +194,7 @@ volatile u_int8_t TempBroadcast[6];
 
 bool Debug         = true;
 bool SleepMode     = true;
+bool DemoMode      = true;
 bool ReadyToPair   = true;
 bool ScreenChanged = false;
 
@@ -266,7 +265,6 @@ void InitModule() {
   FakeMode  = preferences.getBool("FakeMode", true);
   preferences.end();
   
-#pragma region SET_SENSOR_VALUES
   #ifdef NAME_SENSOR_0
     strcpy(S[0].Name, NAME_SENSOR_0);
     S[0].Type     = TYPE_SENSOR_0;
@@ -403,7 +401,6 @@ void InitModule() {
       S[7].Vin = VIN_SENSOR_7;
     #endif 
   #endif
-  #pragma endregion SET_SENSOR_VALUES
   
   for (int SNr=0; SNr<MAX_PERIPHERALS; SNr++)  { // PinMode
     switch (S[SNr].Type) {
@@ -431,6 +428,126 @@ void InitModule() {
     TFT.fillScreen(TFT_BLACK);
   #endif
 }
+void setup() {
+  pinMode(LED_BUILTIN, OUTPUT);
+
+  Serial.begin(74880);
+
+  #ifndef MODULE_C3
+  mrd = new MultiResetDetector(MRD_TIMEOUT, MRD_ADDRESS);
+
+  if (mrd->detectMultiReset()) {
+    Serial.println("Multi Reset Detected");
+    digitalWrite(LED_BUILTIN, LED_ON);
+    ClearPeers();
+    ReadyToPair = true; TSPair = millis();
+  }
+  else {
+    Serial.println("No Multi Reset Detected");
+    digitalWrite(LED_BUILTIN, LED_OFF);
+  }
+  #endif
+
+  WiFi.mode(WIFI_STA);
+  
+  #ifdef ESP32
+    if (esp_now_init() != ESP_OK) { Serial.println("Error initializing ESP-NOW"); return; }
+  #elif defined(ESP8266)
+    if (esp_now_init() != 0)      { Serial.println("Error initializing ESP-NOW"); return; }
+    esp_now_set_self_role(ESP_NOW_ROLE_COMBO);
+  #endif  // ESP32
+  
+  esp_now_register_send_cb(OnDataSent);
+  esp_now_register_recv_cb(OnDataRecv);    
+
+  InitModule();     AddStatus("Init Module");
+  GetPeers();       AddStatus("Get Peers");
+  ReportPeers();    
+  RegisterPeers();  AddStatus("Init fertig");
+  
+  if (PeerCount == 0) { AddStatus("Pairing beginnt"); ReadyToPair = true; TSPair = millis(); }
+  
+  TSLastContact = millis();
+
+  #ifdef ESP32
+  for (int SNr=0; SNr<MAX_PERIPHERALS; SNr++) if (S[SNr].Type == SENS_TYPE_SWITCH) gpio_hold_dis((gpio_num_t)S[SNr].IOPort);  
+  gpio_deep_sleep_hold_dis(); 
+  #endif 
+  
+  UpdateSwitches();
+}
+void loop() {
+  if  ((millis() - TSTouch) > TOUCH_INTERVAL) {
+    TSTouch = millis();
+
+    int BB = !digitalRead(BOOT_BUTTON);
+    //Serial.println(BB);
+    if (BB == 1) {
+      if (!TSBootButton) TSBootButton = millis();
+      else {
+        if ((millis() - TSBootButton) > 3000) {
+          Serial.println("Button pressed... Clearing Peers and Reset");
+          AddStatus("Clearing Peers and Reset");
+          ClearPeers();
+          ESP.restart(); 
+        }
+      }
+    }
+    else TSBootButton = 0;
+
+    #ifdef TOUCH911_USED
+    int G;
+    G = TouchRead();
+
+    switch (Mode) {
+      case S_PAIRING:
+        switch (G) {
+          case CLICK:      Mode = S_STATUS; break;
+        }
+        break;
+      case S_STATUS:
+        switch (G) {
+          case CLICK:      Mode = S_PAIRING; break;
+          case LONG_PRESS: ClearPeers(); ESP.restart(); break;
+        }
+        break;
+      }
+      #endif
+  }
+  
+  if  ((millis() - TSSend ) > MSG_INTERVAL  ) {
+    TSSend = millis();
+    if (ReadyToPair) SendPairingRequest();
+    else SendMessage();
+  }
+  if (((millis() - TSPair ) > PAIR_INTERVAL ) and (ReadyToPair)) {
+    TSPair = 0;
+    ReadyToPair = false;
+    AddStatus("Pairing beendet...");
+  }
+  int Diff = millis() - TSLastContact;
+  //Serial.println(Diff);
+  if (Diff > SLEEP_INTERVAL) {
+    if (SleepMode) {
+      Serial.print("Going to sleep at: "); Serial.println(millis());
+      Serial.print("LastContact    at: "); Serial.println(TSLastContact);
+      GoToSleep();
+    }
+  }
+  if  (((millis() - TSLed) > 300) and (TSLed)) {
+    TSLed = 0;
+    digitalWrite(LED_BUILTIN, LED_OFF);
+  }
+  
+  #ifdef TFT_USED
+  switch (Mode) {
+    case S_PAIRING: ShowPairingScreen(); break;
+    case S_STATUS:  ShowStatus();        break;
+    case M_Menu:    break;
+  }
+  #endif
+}
+#pragma region Peer-Things
 void SavePeers() {
   // Speichert alle bekannten Peers
   // Type-0 (int)
@@ -595,17 +712,15 @@ void ClearInit() {
     Serial.println("JeepifyInit cleared...");
   preferences.end();
 }
+#pragma endregion Peer-Things
+#pragma region Send-Things
 void SendMessage () {
   //sendet NAME0:Value0, NAME1:Value1, SLEEP:Status, DEBUG:Status
   TSLed = millis();
   digitalWrite(LED_BUILTIN, LED_ON);
 
-  StaticJsonDocument<500> doc;
-  String jsondata;
-  
-  char buf[250];
-  doc.clear();
-  jsondata = "";
+  StaticJsonDocument<500> doc; String jsondata; doc.clear(); jsondata = "";
+  char buf[100]; 
 
   doc["Node"] = NODE_NAME;   
 
@@ -614,29 +729,35 @@ void SendMessage () {
       doc[S[SNr].Name] = S[SNr].Value;
     }
     if (S[SNr].Type == SENS_TYPE_AMP) {
-      S[SNr].Value = ReadAmp(SNr);
-      if (FakeMode) S[SNr].Value = random(0,30);
-      if ((S[SNr].Value < -50) or (S[SNr].Value> 50)) S[SNr].Value = -99;
+      if (DemoMode) S[SNr].Value = random(0,30);
+      else S[SNr].Value = ReadAmp(SNr);
+      if (abs(S[SNr].Value) > 99) S[SNr].Value = -99;
       dtostrf(S[SNr].Value, 0, 2, buf);
       doc[S[SNr].Name] = buf;
     }
     if (S[SNr].Type == SENS_TYPE_VOLT) {
-      S[SNr].Value = ReadVolt(SNr);
-      if (FakeMode) S[SNr].Value = random(10,15);
+      if (DemoMode) S[SNr].Value = random(10,15);
+      else S[SNr].Value = ReadVolt(SNr);
       dtostrf(S[SNr].Value, 0, 2, buf);
       doc[S[SNr].Name] = buf;
     }
   }
-  doc["Sleep"] = SleepMode;
-  doc["Debug"] = Debug;
-  doc["Fake"]  = FakeMode;
+  
+  // Status bit1 Debug, bit2 Sleep, bit3 Demo, bit4 RTP
+  int Status = 0;
+  if (Debug)       bitSet(Status, 0);
+  if (Sleep)       bitSet(Status, 1);
+  if (DemoMode)    bitSet(Status, 2);
+  if (ReadyToPair) bitSet(Status, 3);
+  
+  doc["Status"]  = Status;
 
   serializeJson(doc, jsondata);  
 
   for (int PNr=0; PNr<MAX_PEERS; PNr++) {
     if (P[PNr].Type >= MONITOR_ROUND) {
       Serial.print("Sending to: "); Serial.print(P[PNr].Name); 
-      Serial.print(" ("); PrintMAC(P[PNr].BroadcastAddress); Serial.print(") - ");
+      //Serial.print(" ("); PrintMAC(P[PNr].BroadcastAddress); Serial.print(") - ");
       if (esp_now_send(P[PNr].BroadcastAddress, (uint8_t *) jsondata.c_str(), 200) == 0) Serial.println("ESP_OK");  //Sending "jsondata"  
       else Serial.println("ESP_ERROR"); 
       Serial.println(jsondata);
@@ -650,13 +771,8 @@ void SendPairingRequest() {
   TSLed = millis();
   digitalWrite(LED_BUILTIN, LED_ON);
   
-  StaticJsonDocument<500> doc;
-  String jsondata;
-
+  StaticJsonDocument<500> doc; String jsondata; jsondata = ""; doc.clear();
   char Buf[100] = {};
-
-  jsondata = "";  //clearing String after data is being sent
-  doc.clear();
   
   doc["Node"]    = NODE_NAME;   
   doc["Type"]    = NODE_TYPE;
@@ -677,10 +793,12 @@ void SendPairingRequest() {
   if (Debug) { Serial.print("\nSending: "); Serial.println(jsondata); }
   AddStatus("Send Pairing request...");                                     
 }
-void SetFakeMode(bool Mode) {
+#pragma endregion Send-Things
+#pragma region System-Things
+void SetDemoMode(bool Mode) {
   preferences.begin("JeepifyInit", false);
-    FakeMode = Mode;
-    if (preferences.getBool("FakeMode", false) != FakeMode) preferences.putBool("FakeMode", FakeMode);
+    DemoMode = Mode;
+    if (preferences.getBool("DemoMode", false) != DemoMode) preferences.putBool("DemoMode", DemoMode);
   preferences.end();
 }
 void SetSleepMode(bool Mode) {
@@ -695,6 +813,108 @@ void SetDebugMode(bool Mode) {
     if (preferences.getBool("Debug", false) != Debug) preferences.putBool("Debug", Debug);
   preferences.end();
 }
+void AddStatus(String Msg) {
+  for (int Si=MAX_STATUS-1; Si>0; Si--) {
+    Status[Si].Msg   = Status[Si-1].Msg;
+    Status[Si].TSMsg = Status[Si-1].TSMsg;
+  }
+  Status[0].Msg = Msg;
+  Status[0].TSMsg = millis();
+}
+void UpdateSwitches() {
+  for (int SNr=0; SNr<MAX_PERIPHERALS; SNr++) if (S[SNr].Type == SENS_TYPE_SWITCH) digitalWrite(S[SNr].IOPort, S[SNr].Value*RELAY_TYPE);
+  SendMessage();
+}
+float ReadAmp (int Si) {
+  float TempVal      = 0;
+  float TempVolt     = 0;
+  float TempAmp      = 0;
+  
+  #ifdef ADC_USED // Werte auslesen
+    TempVal  = ads.readADC_SingleEnded(S[Si].IOPort);
+    TempVolt = ads.computeVolts(TempVal); 
+    TempAmp  = (TempVolt - S[Si].NullWert) / S[Si].VperAmp;
+    delay(10);
+  #else
+    float TempVoltOverNull = 0;
+    TempVal  = analogRead(S[Si].IOPort);
+    TempVolt = 3.3/4095*TempVal;
+    TempVoltOverNull = 3.3/4095 * (TempVal - S[Si].NullWert);
+    TempAmp = TempVoltOverNull/S[Si].VperAmp * 1,5; // 1.5 wegen Voltage-Devider
+    delay(10);
+  #endif
+  
+  if (Debug) {
+    Serial.print("TempVal:  "); Serial.println(TempVal,4);
+    Serial.print("TempVolt: "); Serial.println(TempVolt,4);
+    Serial.print("Nullwert: "); Serial.println(S[Si].NullWert,4);
+    Serial.print("VperAmp:  "); Serial.println(S[Si].VperAmp,4);
+    Serial.print("TempAmp:  "); Serial.println(TempAmp,4);
+  } 
+  if (abs(TempAmp) < SCHWELLE) TempAmp = 0;
+
+  return (TempAmp); //TempAmp;
+}
+float ReadVolt(int V) {
+  if (!S[V].Vin) { Serial.println("Vin must not be zero !!!"); return 0; }
+  
+  float TempVal  = analogRead(S[V].IOPort);
+  float TempVolt = TempVal / S[V].Vin;
+  
+  if (Debug) {
+    Serial.print("TempVal:  "); Serial.println(TempVal,4);
+    Serial.print("Vin:      "); Serial.println(S[V].Vin);
+    Serial.print("Volt: ");     Serial.println(TempVolt,4);
+    
+  } 
+  return TempVolt;
+}
+bool  isPeerEmpty(int PNr) {
+  return (P[PNr].Type == 0);
+}
+bool  isSensorEmpty(int SNr) {
+  return (S[SNr].Type == 0);
+}
+void  GoToSleep() {
+  StaticJsonDocument<500> doc;
+  String jsondata;
+
+  jsondata = "";  //clearing String after data is being sent
+  doc.clear();
+  
+  doc["Node"] = NODE_NAME;   
+  doc["Type"] = NODE_TYPE;
+  doc["Msg"]  = "GoodBye - going to sleep";
+  
+  serializeJson(doc, jsondata);  
+
+  esp_now_send(broadcastAddressAll, (uint8_t *) jsondata.c_str(), 200);  //Sending "jsondata"  
+  
+  if (Debug) { Serial.print("\nSending: "); Serial.println(jsondata); }
+  AddStatus("Send Going to sleep..."); 
+  
+  Serial.print("Going to sleep at: "); Serial.println(millis());
+  Serial.print("LastContact    at: "); Serial.println(TSLastContact);
+  
+  #ifdef ESP32
+  gpio_deep_sleep_hold_en();
+  for (int SNr=0; SNr<MAX_PERIPHERALS; SNr++) if (S[SNr].Type == SENS_TYPE_SWITCH) gpio_hold_en((gpio_num_t)S[SNr].IOPort);  
+  
+  esp_sleep_enable_timer_wakeup(SLEEP_INTERVAL * 1000);
+  esp_deep_sleep_start();
+  #elif defined(ESP8266)
+  ESP.deepSleep(SLEEP_INTERVAL * 1000);
+  #endif
+
+}
+void  PrintMAC(const uint8_t * mac_addr){
+  char macStr[18];
+  snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x",
+           mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
+  Serial.print(macStr);
+}
+#pragma endregion System-Things
+#pragma region Screens
 void ShowVoltCalib(float V) {
   if (OldMode != Mode) { 
     TSScreenRefresh = millis(); 
@@ -862,14 +1082,6 @@ void ShowMessage(String Msg) {
     TSScreenRefresh = millis();
   }
 }
-void AddStatus(String Msg) {
-  for (int Si=MAX_STATUS-1; Si>0; Si--) {
-    Status[Si].Msg   = Status[Si-1].Msg;
-    Status[Si].TSMsg = Status[Si-1].TSMsg;
-  }
-  Status[0].Msg = Msg;
-  Status[0].TSMsg = millis();
-}
 void ShowStatus() {
   if (OldMode != Mode) { 
     TSScreenRefresh = millis(); 
@@ -917,217 +1129,8 @@ void ShowStatus() {
     TSScreenRefresh = millis();
   }
 }
-void UpdateSwitches() {
-  for (int SNr=0; SNr<MAX_PERIPHERALS; SNr++) if (S[SNr].Type == SENS_TYPE_SWITCH) digitalWrite(S[SNr].IOPort, S[SNr].Value*RELAY_TYPE);
-  SendMessage();
-}
-void setup() {
-  pinMode(LED_BUILTIN, OUTPUT);
-
-  Serial.begin(74880);
-
-  #ifndef MODULE_C3
-  mrd = new MultiResetDetector(MRD_TIMEOUT, MRD_ADDRESS);
-
-  if (mrd->detectMultiReset()) {
-    Serial.println("Multi Reset Detected");
-    digitalWrite(LED_BUILTIN, LED_ON);
-    ClearPeers();
-    ReadyToPair = true; TSPair = millis();
-  }
-  else {
-    Serial.println("No Multi Reset Detected");
-    digitalWrite(LED_BUILTIN, LED_OFF);
-  }
-  #endif
-
-  WiFi.mode(WIFI_STA);
-  
-  #ifdef ESP32
-    if (esp_now_init() != ESP_OK) { Serial.println("Error initializing ESP-NOW"); return; }
-  #elif defined(ESP8266)
-    if (esp_now_init() != 0)      { Serial.println("Error initializing ESP-NOW"); return; }
-    esp_now_set_self_role(ESP_NOW_ROLE_COMBO);
-  #endif  // ESP32
-  
-  esp_now_register_send_cb(OnDataSent);
-  esp_now_register_recv_cb(OnDataRecv);    
-
-  InitModule();     AddStatus("Init Module");
-  GetPeers();       AddStatus("Get Peers");
-  ReportPeers();    
-  RegisterPeers();  AddStatus("Init fertig");
-  
-  if (PeerCount == 0) { AddStatus("Pairing beginnt"); ReadyToPair = true; TSPair = millis(); }
-  
-  TSLastContact = millis();
-
-  #ifdef ESP32
-  for (int SNr=0; SNr<MAX_PERIPHERALS; SNr++) if (S[SNr].Type == SENS_TYPE_SWITCH) gpio_hold_dis((gpio_num_t)S[SNr].IOPort);  
-  gpio_deep_sleep_hold_dis(); 
-  #endif 
-  
-  UpdateSwitches();
-}
-void loop() {
-  if  ((millis() - TSTouch) > TOUCH_INTERVAL) {
-    TSTouch = millis();
-
-    int BB = !digitalRead(BOOT_BUTTON);
-    //Serial.println(BB);
-    if (BB == 1) {
-      if (!TSBootButton) TSBootButton = millis();
-      else {
-        if ((millis() - TSBootButton) > 3000) {
-          Serial.println("Button pressed... Clearing Peers and Reset");
-          AddStatus("Clearing Peers and Reset");
-          ClearPeers();
-          ESP.restart(); 
-        }
-      }
-    }
-    else TSBootButton = 0;
-
-    #ifdef TOUCH911_USED
-    int G;
-    G = TouchRead();
-
-    switch (Mode) {
-      case S_PAIRING:
-        switch (G) {
-          case CLICK:      Mode = S_STATUS; break;
-        }
-        break;
-      case S_STATUS:
-        switch (G) {
-          case CLICK:      Mode = S_PAIRING; break;
-          case LONG_PRESS: ClearPeers(); ESP.restart(); break;
-        }
-        break;
-      }
-      #endif
-  }
-  
-  if  ((millis() - TSSend ) > MSG_INTERVAL  ) {
-    TSSend = millis();
-    if (ReadyToPair) SendPairingRequest();
-    else SendMessage();
-  }
-  if (((millis() - TSPair ) > PAIR_INTERVAL ) and (ReadyToPair)) {
-    TSPair = 0;
-    ReadyToPair = false;
-    AddStatus("Pairing beendet...");
-  }
-  int Diff = millis() - TSLastContact;
-  //Serial.println(Diff);
-  if (Diff > SLEEP_INTERVAL) {
-    if (SleepMode) {
-      Serial.print("Going to sleep at: "); Serial.println(millis());
-      Serial.print("LastContact    at: "); Serial.println(TSLastContact);
-      GoToSleep();
-    }
-  }
-  if  (((millis() - TSLed) > 300) and (TSLed)) {
-    TSLed = 0;
-    digitalWrite(LED_BUILTIN, LED_OFF);
-  }
-  
-  #ifdef TFT_USED
-  switch (Mode) {
-    case S_PAIRING: ShowPairingScreen(); break;
-    case S_STATUS:  ShowStatus();        break;
-    case M_Menu:    break;
-  }
-  #endif
-}
-float ReadAmp (int Si) {
-  float TempVal      = 0;
-  float TempVolt     = 0;
-  float TempAmp      = 0;
-  
-  #ifdef ADC_USED // Werte auslesen
-    TempVal  = ads.readADC_SingleEnded(S[Si].IOPort);
-    TempVolt = ads.computeVolts(TempVal); 
-    TempAmp  = (TempVolt - S[Si].NullWert) / S[Si].VperAmp;
-    delay(10);
-  #else
-    float TempVoltOverNull = 0;
-    TempVal  = analogRead(S[Si].IOPort);
-    TempVolt = 3.3/4095*TempVal;
-    TempVoltOverNull = 3.3/4095 * (TempVal - S[Si].NullWert);
-    TempAmp = TempVoltOverNull/S[Si].VperAmp * 1,5; // 1.5 wegen Voltage-Devider
-    delay(10);
-  #endif
-  
-  if (Debug) {
-    Serial.print("TempVal:  "); Serial.println(TempVal,4);
-    Serial.print("TempVolt: "); Serial.println(TempVolt,4);
-    Serial.print("Nullwert: "); Serial.println(S[Si].NullWert,4);
-    Serial.print("VperAmp:  "); Serial.println(S[Si].VperAmp,4);
-    Serial.print("TempAmp:  "); Serial.println(TempAmp,4);
-  } 
-  if (abs(TempAmp) < SCHWELLE) TempAmp = 0;
-
-  return (TempAmp); //TempAmp;
-}
-float ReadVolt(int V) {
-  if (!S[V].Vin) { Serial.println("Vin must not be zero !!!"); return 0; }
-  
-  float TempVal  = analogRead(S[V].IOPort);
-  float TempVolt = TempVal / S[V].Vin;
-  
-  if (Debug) {
-    Serial.print("TempVal:  "); Serial.println(TempVal,4);
-    Serial.print("Vin:      "); Serial.println(S[V].Vin);
-    Serial.print("Volt: ");     Serial.println(TempVolt,4);
-    
-  } 
-  return TempVolt;
-}
-bool  isPeerEmpty(int PNr) {
-  return (P[PNr].Type == 0);
-}
-bool  isSensorEmpty(int SNr) {
-  return (S[SNr].Type == 0);
-}
-void  GoToSleep() {
-  StaticJsonDocument<500> doc;
-  String jsondata;
-
-  jsondata = "";  //clearing String after data is being sent
-  doc.clear();
-  
-  doc["Node"] = NODE_NAME;   
-  doc["Type"] = NODE_TYPE;
-  doc["Msg"]  = "GoodBye - going to sleep";
-  
-  serializeJson(doc, jsondata);  
-
-  esp_now_send(broadcastAddressAll, (uint8_t *) jsondata.c_str(), 200);  //Sending "jsondata"  
-  
-  if (Debug) { Serial.print("\nSending: "); Serial.println(jsondata); }
-  AddStatus("Send Going to sleep..."); 
-  
-  Serial.print("Going to sleep at: "); Serial.println(millis());
-  Serial.print("LastContact    at: "); Serial.println(TSLastContact);
-  
-  #ifdef ESP32
-  gpio_deep_sleep_hold_en();
-  for (int SNr=0; SNr<MAX_PERIPHERALS; SNr++) if (S[SNr].Type == SENS_TYPE_SWITCH) gpio_hold_en((gpio_num_t)S[SNr].IOPort);  
-  
-  esp_sleep_enable_timer_wakeup(SLEEP_INTERVAL * 1000);
-  esp_deep_sleep_start();
-  #elif defined(ESP8266)
-  ESP.deepSleep(SLEEP_INTERVAL * 1000);
-  #endif
-
-}
-void  PrintMAC(const uint8_t * mac_addr){
-  char macStr[18];
-  snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x",
-           mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
-  Serial.print(macStr);
-}
+#pragma endregion Screens
+#pragma region Touch-Things
 #ifdef TOUCH911_USED //int TouchRead()
 int   TouchRead() {
   uint16_t TouchX, TouchY;
@@ -1181,6 +1184,7 @@ int   TouchRead() {
   return ret;
 }
 #endif
+#pragma endregion Touch-Things
 #pragma region OnDataRecv
 #ifdef ESP32  
 void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {  
