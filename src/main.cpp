@@ -1,5 +1,5 @@
 #define NODE_NAME "c3-1"
-#define VERSION   "V 1.10"
+#define VERSION   "V 1.11"
 
 #pragma region Module_Definitions
 #define MODULE_C3
@@ -1244,30 +1244,29 @@ void OnDataRecv(uint8_t * mac, uint8_t *incomingData, uint8_t len) {
         if (!PairingSuccess) { PrintMAC(mac); Serial.println(" adding failed..."); } 
       }
     }
-    if (doc["Order"] == "stay alive") {
-      TSLastContact = millis();
-      if (Debug) { Serial.print("LastContact: "); Serial.println(TSLastContact); }
-    }
-    if      (doc["Order"] == "SleepMode On")     { AddStatus("Sleep: on");  SetSleepMode(true);  SendMessage(); }
+    if      (doc["Order"] == "stay alive")       { TSLastContact = millis();
+                                                   if (Debug) { Serial.print("LastContact: "); Serial.println(TSLastContact); }
+                                                 }
+    else if (doc["Order"] == "SleepMode On")     { AddStatus("Sleep: on");  SetSleepMode(true);  SendMessage(); }
     else if (doc["Order"] == "SleepMode Off")    { AddStatus("Sleep: off"); SetSleepMode(false); SendMessage(); }
-    else if (doc["Order"] == "SleepMode Toggle") { if (SleepMode) { AddStatus("Sleep: off"); SetSleepMode(false); SendMessage(); }
-                                                             else { AddStatus("Sleep: on");  SetSleepMode(true);  SendMessage(); }
+    else if (doc["Order"] == "SleepMode Toggle") { if (SleepMode) { AddStatus("Sleep: off");   SetSleepMode(false); SendMessage(); }
+                                                             else { AddStatus("Sleep: on");    SetSleepMode(true);  SendMessage(); }
                                                  } 
-    else if (doc["Order"] == "Debug on")      { AddStatus("Debug: on");  SetDebugMode(true);  SendMessage(); }
-    else if (doc["Order"] == "Debug off")     { AddStatus("Debug: off"); SetDebugMode(false); SendMessage(); }
-    else if (doc["Order"] == "Debug Toggle")  { if (Debug) { AddStatus("Debug: off"); SetDebugMode(false); SendMessage(); }
-                                                      else { AddStatus("Debug: on");  SetDebugMode(true);  SendMessage(); }
-                                              }
-    else if (doc["Order"] == "Fake on")      { AddStatus("Fake: on");  SetFakeMode(true);  SendMessage(); }
-    else if (doc["Order"] == "Fake off")     { AddStatus("Fake: off"); SetFakeMode(false); SendMessage(); }
-    else if (doc["Order"] == "Fake Toggle")  { if (FakeMode) { AddStatus("Fake: off"); SetFakeMode(false); SendMessage(); }
-                                                        else { AddStatus("Fake: on");  SetFakeMode(true);  SendMessage(); }
+    else if (doc["Order"] == "Debug on")         { AddStatus("Debug: on");  SetDebugMode(true);  SendMessage(); }
+    else if (doc["Order"] == "Debug off")        { AddStatus("Debug: off"); SetDebugMode(false); SendMessage(); }
+    else if (doc["Order"] == "Debug Toggle")     { if (Debug)     { AddStatus("Debug: off");   SetDebugMode(false); SendMessage(); }
+                                                             else { AddStatus("Debug: on");    SetDebugMode(true);  SendMessage(); }
+                                                 }
+    else if (doc["Order"] == "Demo on")          { AddStatus("Fake: on");   SetDemoMode(true);   SendMessage(); }
+    else if (doc["Order"] == "Demo off")         { AddStatus("Fake: off");  SetDemoMode(false);  SendMessage(); }
+    else if (doc["Order"] == "Demo Toggle")      { if (DemoMode) { AddStatus("DemoMode: off"); SetDemoMode(false); SendMessage(); }
+                                                            else { AddStatus("DemoMode: on");  SetDemoMode(true);  SendMessage(); }
                                               }
     else if (doc["Order"] == "Reset")         { AddStatus("Clear all"); ClearPeers(); ClearInit(); ESP.restart(); }
     else if (doc["Order"] == "Restart")       { ESP.restart(); }
     else if (doc["Order"] == "Pair")          { TSPair = millis(); ReadyToPair = true; AddStatus("Pairing beginnt"); SendMessage(); }
 
-    else if (doc["Order"] == "Eichen")        { Mode = S_EICHEN;  AddStatus("Eichen beginnt"); ShowEichen(); }
+    else if (doc["Order"] == "Eichen")        { Mode = S_EICHEN;  AddStatus("Eichen beginnt");    ShowEichen(); }
     else if (doc["Order"] == "VoltCalib")     { Mode = S_CAL_VOL; AddStatus("VoltCalib beginnt"); ShowVoltCalib((float)doc["Value"]); }
     else if (doc["Order"] == "ToggleSwitch")  { for (int SNr=0; SNr<MAX_PERIPHERALS; SNr++) {
                                                   if ((S[SNr].Name == doc["Value"]) and (S[SNr].Type == SENS_TYPE_SWITCH)) {
