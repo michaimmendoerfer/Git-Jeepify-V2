@@ -1257,9 +1257,9 @@ void OnDataRecv(uint8_t * mac, uint8_t *incomingData, uint8_t len) {
     else if (doc["Order"] == "Debug Toggle")     { if (Debug)     { AddStatus("Debug: off");   SetDebugMode(false); SendMessage(); }
                                                              else { AddStatus("Debug: on");    SetDebugMode(true);  SendMessage(); }
                                                  }
-    else if (doc["Order"] == "Demo on")          { AddStatus("Fake: on");   SetDemoMode(true);   SendMessage(); }
-    else if (doc["Order"] == "Demo off")         { AddStatus("Fake: off");  SetDemoMode(false);  SendMessage(); }
-    else if (doc["Order"] == "Demo Toggle")      { if (DemoMode) { AddStatus("DemoMode: off"); SetDemoMode(false); SendMessage(); }
+    else if (doc["Order"] == "DemoMode on")      { AddStatus("Demo: on");   SetDemoMode(true);   SendMessage(); }
+    else if (doc["Order"] == "DemoMode off")     { AddStatus("Demo: off");  SetDemoMode(false);  SendMessage(); }
+    else if (doc["Order"] == "DemoMode Toggle")  { if (DemoMode) { AddStatus("DemoMode: off"); SetDemoMode(false); SendMessage(); }
                                                             else { AddStatus("DemoMode: on");  SetDemoMode(true);  SendMessage(); }
                                               }
     else if (doc["Order"] == "Reset")         { AddStatus("Clear all"); ClearPeers(); ClearInit(); ESP.restart(); }
