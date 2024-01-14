@@ -192,7 +192,7 @@ struct_Status Status[MAX_STATUS];
 
 volatile u_int8_t TempBroadcast[6];
 
-bool Debug         = true;
+bool DebugMode     = true;
 bool SleepMode     = true;
 bool DemoMode      = true;
 bool ReadyToPair   = true;
@@ -247,7 +247,7 @@ void   ShowMessage(String Msg);
 void   UpdateSwitches();
 
 void   SetSleepMode(bool Mode);
-void   SetDebugMode(bool Mode);
+void   SetDebugModeMode(bool Mode);
 void   AddStatus(String Msg);
 void   ShowStatus();
 
@@ -260,9 +260,9 @@ void   GoToSleep();
 
 void InitModule() {
   preferences.begin("JeepifyInit", true);
-  Debug     = preferences.getBool("Debug", true);
+  DebugMode     = preferences.getBool("DebugMode", true);
   SleepMode = preferences.getBool("SleepMode", false);
-  FakeMode  = preferences.getBool("FakeMode", true);
+  DemoMode  = preferences.getBool("FakeMode", true);
   preferences.end();
   
   #ifdef NAME_SENSOR_0
@@ -619,7 +619,7 @@ void GetPeers() {
       
       P[Pi].TSLastSeen = millis();
 
-      if (Debug) {
+      if (DebugMode) {
         Serial.print("GetPeers: P["); Serial.print(Pi); Serial.print("]: Type="); Serial.print(P[Pi].Type); 
         Serial.print(", Name="); Serial.print(P[Pi].Name);
         Serial.print(", MAC="); PrintMAC(P[Pi].BroadcastAddress); Serial.println();
@@ -644,7 +644,7 @@ void ReportPeers() {
   Serial.println(); Serial.print(NODE_NAME); Serial.print(", I am a "); Serial.println(ZName);
   Serial.println("Report-Peers:");
   for (int PNr=0; PNr<MAX_PEERS; PNr++) {
-    if (Debug) {
+    if (DebugMode) {
       sprintf(Buf, "%s (Type: %d) - MAC:", P[PNr].Name, P[PNr].Type);
       Serial.print(Buf); PrintMAC(P[PNr].BroadcastAddress);
       Serial.println();
@@ -715,7 +715,7 @@ void ClearInit() {
 #pragma endregion Peer-Things
 #pragma region Send-Things
 void SendMessage () {
-  //sendet NAME0:Value0, NAME1:Value1, SLEEP:Status, DEBUG:Status
+  //sendet NAME0:Value0, NAME1:Value1, SLEEP:Status, Debug:Status
   TSLed = millis();
   digitalWrite(LED_BUILTIN, LED_ON);
 
@@ -730,23 +730,46 @@ void SendMessage () {
     }
     if (S[SNr].Type == SENS_TYPE_AMP) {
       if (DemoMode) S[SNr].Value = random(0,30);
-      else S[SNr].Value = ReadAmp(SNr);
+      else          S[SNr].Value = ReadAmp(SNr);
+    	
       if (abs(S[SNr].Value) > 99) S[SNr].Value = -99;
       dtostrf(S[SNr].Value, 0, 2, buf);
-      doc[S[SNr].Name] = buf;
+      
+      if (S[SNr].Value != S[SNr].OldValue) {
+        S[SNr].OldValue = S[SNr].Value;
+        S[SNr].Changed = true;
+      }
+      else {
+        S[SNr].OldValue = S[SNr].Value;
+        S[SNr].Changed = false;
+      }
+
+      if (S[SNr].Changed) doc[S[SNr].Name] = buf;
     }
+
     if (S[SNr].Type == SENS_TYPE_VOLT) {
       if (DemoMode) S[SNr].Value = random(10,15);
-      else S[SNr].Value = ReadVolt(SNr);
+      else          S[SNr].Value = ReadVolt(SNr);
+
       dtostrf(S[SNr].Value, 0, 2, buf);
-      doc[S[SNr].Name] = buf;
+      
+      if (S[SNr].Value != S[SNr].OldValue) {
+        S[SNr].OldValue = S[SNr].Value;
+        S[SNr].Changed = true;
+      }
+      else {
+        S[SNr].OldValue = S[SNr].Value;
+        S[SNr].Changed = false;
+      }
+
+      if (S[SNr].Changed) doc[S[SNr].Name] = buf;
     }
   }
   
-  // Status bit1 Debug, bit2 Sleep, bit3 Demo, bit4 RTP
+  // Status bit1 DebugMode, bit2 Sleep, bit3 Demo, bit4 RTP
   int Status = 0;
-  if (Debug)       bitSet(Status, 0);
-  if (Sleep)       bitSet(Status, 1);
+  if (DebugMode)   bitSet(Status, 0);
+  if (SleepMode)   bitSet(Status, 1);
   if (DemoMode)    bitSet(Status, 2);
   if (ReadyToPair) bitSet(Status, 3);
   
@@ -757,7 +780,6 @@ void SendMessage () {
   for (int PNr=0; PNr<MAX_PEERS; PNr++) {
     if (P[PNr].Type >= MONITOR_ROUND) {
       Serial.print("Sending to: "); Serial.print(P[PNr].Name); 
-      //Serial.print(" ("); PrintMAC(P[PNr].BroadcastAddress); Serial.print(") - ");
       if (esp_now_send(P[PNr].BroadcastAddress, (uint8_t *) jsondata.c_str(), 200) == 0) Serial.println("ESP_OK");  //Sending "jsondata"  
       else Serial.println("ESP_ERROR"); 
       Serial.println(jsondata);
@@ -790,7 +812,7 @@ void SendPairingRequest() {
 
   esp_now_send(broadcastAddressAll, (uint8_t *) jsondata.c_str(), 200);  //Sending "jsondata"  
   
-  if (Debug) { Serial.print("\nSending: "); Serial.println(jsondata); }
+  if (DebugMode) { Serial.print("\nSending: "); Serial.println(jsondata); }
   AddStatus("Send Pairing request...");                                     
 }
 #pragma endregion Send-Things
@@ -809,8 +831,8 @@ void SetSleepMode(bool Mode) {
 }
 void SetDebugMode(bool Mode) {
   preferences.begin("JeepifyInit", false);
-    Debug = Mode;
-    if (preferences.getBool("Debug", false) != Debug) preferences.putBool("Debug", Debug);
+    DebugMode = Mode;
+    if (preferences.getBool("DebugMode", false) != DebugMode) preferences.putBool("DebugMode", DebugMode);
   preferences.end();
 }
 void AddStatus(String Msg) {
@@ -844,7 +866,7 @@ float ReadAmp (int Si) {
     delay(10);
   #endif
   
-  if (Debug) {
+  if (DebugMode) {
     Serial.print("TempVal:  "); Serial.println(TempVal,4);
     Serial.print("TempVolt: "); Serial.println(TempVolt,4);
     Serial.print("Nullwert: "); Serial.println(S[Si].NullWert,4);
@@ -852,7 +874,7 @@ float ReadAmp (int Si) {
     Serial.print("TempAmp:  "); Serial.println(TempAmp,4);
   } 
   if (abs(TempAmp) < SCHWELLE) TempAmp = 0;
-
+  
   return (TempAmp); //TempAmp;
 }
 float ReadVolt(int V) {
@@ -861,7 +883,7 @@ float ReadVolt(int V) {
   float TempVal  = analogRead(S[V].IOPort);
   float TempVolt = TempVal / S[V].Vin;
   
-  if (Debug) {
+  if (DebugMode) {
     Serial.print("TempVal:  "); Serial.println(TempVal,4);
     Serial.print("Vin:      "); Serial.println(S[V].Vin);
     Serial.print("Volt: ");     Serial.println(TempVolt,4);
@@ -890,7 +912,7 @@ void  GoToSleep() {
 
   esp_now_send(broadcastAddressAll, (uint8_t *) jsondata.c_str(), 200);  //Sending "jsondata"  
   
-  if (Debug) { Serial.print("\nSending: "); Serial.println(jsondata); }
+  if (DebugMode) { Serial.print("\nSending: "); Serial.println(jsondata); }
   AddStatus("Send Going to sleep..."); 
   
   Serial.print("Going to sleep at: "); Serial.println(millis());
@@ -926,7 +948,7 @@ void ShowVoltCalib(float V) {
     OldMode = Mode;
     char Buf[100] = {}; char BufNr[10] = {}; 
   
-    if (Debug) Serial.println("Volt-Messung kalibrieren...");
+    if (DebugMode) Serial.println("Volt-Messung kalibrieren...");
     
     preferences.begin("JeepifyInit", false);
     
@@ -949,7 +971,7 @@ void ShowVoltCalib(float V) {
       if (S[SNr].Type = SENS_TYPE_VOLT) {
         int TempRead = analogRead(S[SNr].IOPort);
         
-        if (Debug) {
+        if (DebugMode) {
           Serial.print("S["); Serial.print(SNr); Serial.print("].Vin = ");
           Serial.println(S[SNr].Vin, 4);
           Serial.print("Volt(nachher) = ");
@@ -999,7 +1021,7 @@ void ShowEichen() {
     TFT.unloadFont();
     #endif
 
-    if (Debug) Serial.println("Eichen...");
+    if (DebugMode) Serial.println("Eichen...");
     
     preferences.begin("JeepifyInit", false);
 
@@ -1017,14 +1039,14 @@ void ShowEichen() {
         TempVolt = 3.3/4095*TempVal;
         #endif      
 
-        if (Debug) { 
+        if (DebugMode) { 
           Serial.print("TempVal:");     Serial.println(TempVal);
           Serial.print(", TempVolt: "); Serial.println(TempVolt);
         }
         S[SNr].NullWert = TempVolt;
         sprintf(Buf, "Null-%d", SNr); 
         preferences.putFloat(Buf, S[SNr].NullWert);
-        if (Debug) {
+        if (DebugMode) {
           Serial.print("schreibe "); Serial.print(Buf); Serial.print(" = "); Serial.println(S[SNr].NullWert); 
         }
 
@@ -1231,7 +1253,7 @@ void OnDataRecv(uint8_t * mac, uint8_t *incomingData, uint8_t len) {
             SavePeers();
             RegisterPeers();
             
-            if (Debug) {
+            if (DebugMode) {
               Serial.print("Adding in slot: "); Serial.println(PNr);
               Serial.print("Name: "); Serial.print(P[PNr].Name);
               Serial.print(" (");PrintMAC(P[PNr].BroadcastAddress); Serial.println(")\n");
@@ -1245,17 +1267,17 @@ void OnDataRecv(uint8_t * mac, uint8_t *incomingData, uint8_t len) {
       }
     }
     if      (doc["Order"] == "stay alive")       { TSLastContact = millis();
-                                                   if (Debug) { Serial.print("LastContact: "); Serial.println(TSLastContact); }
+                                                   if (DebugMode) { Serial.print("LastContact: "); Serial.println(TSLastContact); }
                                                  }
     else if (doc["Order"] == "SleepMode On")     { AddStatus("Sleep: on");  SetSleepMode(true);  SendMessage(); }
     else if (doc["Order"] == "SleepMode Off")    { AddStatus("Sleep: off"); SetSleepMode(false); SendMessage(); }
     else if (doc["Order"] == "SleepMode Toggle") { if (SleepMode) { AddStatus("Sleep: off");   SetSleepMode(false); SendMessage(); }
                                                              else { AddStatus("Sleep: on");    SetSleepMode(true);  SendMessage(); }
                                                  } 
-    else if (doc["Order"] == "Debug on")         { AddStatus("Debug: on");  SetDebugMode(true);  SendMessage(); }
-    else if (doc["Order"] == "Debug off")        { AddStatus("Debug: off"); SetDebugMode(false); SendMessage(); }
-    else if (doc["Order"] == "Debug Toggle")     { if (Debug)     { AddStatus("Debug: off");   SetDebugMode(false); SendMessage(); }
-                                                             else { AddStatus("Debug: on");    SetDebugMode(true);  SendMessage(); }
+    else if (doc["Order"] == "DebugMode on")     { AddStatus("DebugMode: on");  SetDebugMode(true);  SendMessage(); }
+    else if (doc["Order"] == "DebugMode off")    { AddStatus("DebugMode: off"); SetDebugMode(false); SendMessage(); }
+    else if (doc["Order"] == "Debug Toggle")     { if (DebugMode) { AddStatus("DebugMode: off");   SetDebugMode(false); SendMessage(); }
+                                                             else { AddStatus("DebugMode: on");    SetDebugMode(true);  SendMessage(); }
                                                  }
     else if (doc["Order"] == "DemoMode on")      { AddStatus("Demo: on");   SetDemoMode(true);   SendMessage(); }
     else if (doc["Order"] == "DemoMode off")     { AddStatus("Demo: off");  SetDemoMode(false);  SendMessage(); }
