@@ -1,13 +1,13 @@
-#define NODE_NAME "c3-1"
-#define VERSION   "V 1.11"
+#define NODE_NAME "C3-PDC2"
+#define VERSION   "V 1.16"
 
 #pragma region Module_Definitions
 #define MODULE_C3
 
-#define MODULE_4AMP_1VOLT_NOADC
+//#define MODULE_4AMP_1VOLT_NOADC
 //#define MODULE_SWITCH_2
 //#define MODULE_SWITCH_4
-//#define MODULE_4AMP_1VOLT
+#define MODULE_4AMP_1VOLT
 
 #ifdef MODULE_SWITCH_4
   #define NODE_TYPE SWITCH_4_WAY
@@ -15,19 +15,19 @@
  
   #define NAME_SENSOR_0 "M3-SW0"
   #define TYPE_SENSOR_0  SENS_TYPE_SWITCH
-  #define IOPORT_0       1
+  #define IOPORT_0       4
   
   #define NAME_SENSOR_1 "M3-SW1"
   #define TYPE_SENSOR_1  SENS_TYPE_SWITCH
-  #define IOPORT_1       2
+  #define IOPORT_1      14
   
   #define NAME_SENSOR_2 "M3-SW2"
   #define TYPE_SENSOR_2  SENS_TYPE_SWITCH
-  #define IOPORT_2       3
+  #define IOPORT_2       12
   
   #define NAME_SENSOR_3 "M3-SW3"
   #define TYPE_SENSOR_3  SENS_TYPE_SWITCH
-  #define IOPORT_3       4
+  #define IOPORT_3       13
 #endif
 #ifdef MODULE_SWITCH_2
   #define NODE_TYPE SWITCH_2_WAY
@@ -46,64 +46,64 @@
   #define ADC_USED 
   #define RELAY_TYPE     1 // 1-normal, -1 bei reversed      
  
-  #define NAME_SENSOR_0 "Extern"
+  #define NAME_SENSOR_0 "Ext1"
   #define TYPE_SENSOR_0  SENS_TYPE_AMP
   #define NULL_SENSOR_0  3134
   #define SENS_SENSOR_0  0.066
   #define IOPORT_0       0
 
-  #define NAME_SENSOR_1 "Intern"
+  #define NAME_SENSOR_1 "Int1"
   #define TYPE_SENSOR_1  SENS_TYPE_AMP
   #define NULL_SENSOR_1  3134
   #define SENS_SENSOR_1  0.066
   #define IOPORT_1       1
   
-  #define NAME_SENSOR_2 "Solar"
+  #define NAME_SENSOR_2 "Sol1"
   #define TYPE_SENSOR_2  SENS_TYPE_AMP
   #define NULL_SENSOR_2  3150
   #define SENS_SENSOR_2  0.066
   #define IOPORT_2       2
   
-  #define NAME_SENSOR_3 "Load"
+  #define NAME_SENSOR_3 "Load1"
   #define TYPE_SENSOR_3  SENS_TYPE_AMP
   #define NULL_SENSOR_3  3150
   #define SENS_SENSOR_3  0.066
   #define IOPORT_3       3
   
-  #define NAME_SENSOR_4  "Lipo"
+  #define NAME_SENSOR_4  "Lipo1"
   #define TYPE_SENSOR_4  SENS_TYPE_VOLT
   #define VIN_SENSOR_4   200
-  #define IOPORT_4       PIN_A0
+  #define IOPORT_4       4// PIN_A0
 #endif
 #ifdef MODULE_4AMP_1VOLT_NOADC
   #define NODE_TYPE BATTERY_SENSOR
   #define RELAY_TYPE     1 // 1-normal, -1 bei reversed
  
-  #define NAME_SENSOR_0 "Solar"
+  #define NAME_SENSOR_0 "Sol1"
   #define TYPE_SENSOR_0  SENS_TYPE_AMP
   #define NULL_SENSOR_0  3134
   #define SENS_SENSOR_0  0.066
   #define IOPORT_0       0 //34
 
-  #define NAME_SENSOR_1 "Intern"
+  #define NAME_SENSOR_1 "Int1"
   #define TYPE_SENSOR_1  SENS_TYPE_AMP
   #define NULL_SENSOR_1  3134
   #define SENS_SENSOR_1  0.066
   #define IOPORT_1       1 //35
   
-  #define NAME_SENSOR_2 "Extern"
+  #define NAME_SENSOR_2 "Ext1"
   #define TYPE_SENSOR_2  SENS_TYPE_AMP
   #define NULL_SENSOR_2  3150
   #define SENS_SENSOR_2  0.066
   #define IOPORT_2       3 //32
   
-  #define NAME_SENSOR_3 "Load"
+  #define NAME_SENSOR_3 "Load1"
   #define TYPE_SENSOR_3  SENS_TYPE_AMP
   #define NULL_SENSOR_3  3150
   #define SENS_SENSOR_3  0.066
   #define IOPORT_3       4 //33
   
-  #define NAME_SENSOR_4  "LiPo"
+  #define NAME_SENSOR_4  "LiPo1"
   #define TYPE_SENSOR_4  SENS_TYPE_VOLT
   #define VIN_SENSOR_4   200
   #define IOPORT_4       5 //39
@@ -193,7 +193,7 @@ struct_Status Status[MAX_STATUS];
 volatile u_int8_t TempBroadcast[6];
 
 bool DebugMode     = true;
-bool SleepMode     = true;
+bool SleepMode     = false;
 bool DemoMode      = true;
 bool ReadyToPair   = true;
 bool ScreenChanged = false;
