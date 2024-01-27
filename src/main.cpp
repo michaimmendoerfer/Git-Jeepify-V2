@@ -1,4 +1,4 @@
-#define NODE_NAME "C3-Bat1"
+#define NODE_NAME "LiPofy"
 #define VERSION   "V 1.16"
 
 #pragma region Module_Definitions
@@ -160,7 +160,6 @@ MultiResetDetector* mrd;
 #pragma endregion LED-setup
 #pragma region Includes
 #include <Arduino.h>
-#include <nvs_flash.h>
 #include "../../jeepify.h"
 #include <ArduinoJson.h>
 #include <Preferences.h>
@@ -168,6 +167,7 @@ MultiResetDetector* mrd;
 #ifdef ESP32
   #include <esp_now.h>
   #include <WiFi.h>
+  #include <nvs_flash.h>
 #elif defined(ESP8266)
   #include <ESP8266WiFi.h>
   #include <espnow.h>
@@ -195,7 +195,7 @@ volatile u_int8_t TempBroadcast[6];
 
 bool DebugMode     = true;
 bool SleepMode     = false;
-bool DemoMode      = true;
+bool DemoMode      = false;
 bool ReadyToPair   = true;
 bool ScreenChanged = false;
 
@@ -261,9 +261,9 @@ void   GoToSleep();
 
 void InitModule() {
   preferences.begin("JeepifyInit", true);
-  DebugMode     = preferences.getBool("DebugMode", true);
+  DebugMode = preferences.getBool("DebugMode", true);
   SleepMode = preferences.getBool("SleepMode", false);
-  DemoMode  = preferences.getBool("FakeMode", true);
+  DemoMode  = preferences.getBool("DemoMode", false);
   preferences.end();
   
   #ifdef NAME_SENSOR_0
@@ -441,6 +441,7 @@ void setup() {
     Serial.println("Multi Reset Detected");
     digitalWrite(LED_BUILTIN, LED_ON);
     ClearPeers();
+    SetSleepMode(false);
     ReadyToPair = true; TSPair = millis();
   }
   else {
@@ -489,7 +490,12 @@ void loop() {
         if ((millis() - TSBootButton) > 3000) {
           Serial.println("Button pressed... Clearing Peers and Reset");
           AddStatus("Clearing Peers and Reset");
-          nvs_flash_erase(); nvs_flash_init(); ; ESP.restart();
+          #ifdef ESP32
+            nvs_flash_erase(); nvs_flash_init();
+          #elif defined(ESP8266)
+            ClearPeers();
+          #endif 
+           ESP.restart();
         }
       }
     }
@@ -566,18 +572,18 @@ void SavePeers() {
     if (!isPeerEmpty(Pi)) {
       PeerCount++;
       //P.Type...
-      sprintf(Buf, "Type-%d", Pi); 
+      snprintf(Buf, sizeof(Buf), "Type-%d", Pi); 
       preferences.putInt(Buf, P[Pi].Type);
       Serial.print("schreibe "); Serial.print(Buf); Serial.print(" = "); Serial.println(P[Pi].Type);
 
       //P.Name
-      sprintf(Buf, "Name-%d", Pi); 
+      snprintf(Buf, sizeof(Buf), "Name-%d", Pi); 
       BufS = P[Pi].Name;
       preferences.putString(Buf, BufS);
       Serial.print("schreibe "); Serial.print(Buf); Serial.print(" = "); Serial.println(BufS);
       
       //P.BroadcastAdress
-      sprintf(Buf, "MAC-%d", Pi); 
+      snprintf(Buf, sizeof(Buf), "MAC-%d", Pi); 
       preferences.putBytes(Buf, P[Pi].BroadcastAddress, 6);
       Serial.print(Buf); Serial.print("="); PrintMAC(P[Pi].BroadcastAddress); Serial.println();
     }
@@ -600,21 +606,21 @@ void GetPeers() {
   for (int Pi=0; Pi<MAX_PEERS; Pi++) {
   
     // Peer gefüllt?
-    sprintf(Buf, "Type-%d", Pi); 
+    snprintf(Buf, sizeof(Buf), "Type-%d", Pi); 
     if (preferences.getInt(Buf,0) > 0) {
       PeerCount++;
 
       // Type-0
-      sprintf(Buf, "Type-%d", Pi); 
+      snprintf(Buf, sizeof(Buf), "Type-%d", Pi); 
       P[Pi].Type = preferences.getInt(Buf);
       
       // Name-0
-      sprintf(Buf, "Name-%d", Pi); 
+      snprintf(Buf, sizeof(Buf), "Name-%d", Pi); 
       BufS = preferences.getString(Buf);
       strcpy(P[Pi].Name, BufS.c_str());
       
       // MAC-0
-      sprintf(Buf, "MAC-%d", Pi); 
+      snprintf(Buf, sizeof(Buf), "MAC-%d", Pi); 
       preferences.getBytes(Buf, P[Pi].BroadcastAddress, 6);
       
       P[Pi].TSLastSeen = millis();
@@ -627,6 +633,29 @@ void GetPeers() {
     }
   }
   if (PeerCount ==0) { ReadyToPair = true; TSPair = millis(); }
+
+  float TempFloat = 0;
+      
+  for (int SNr=0; SNr<MAX_PERIPHERALS; SNr++) {
+    if (S[SNr].Type == SENS_TYPE_AMP) {
+      snprintf(Buf, sizeof(Buf), "Null-%d", SNr); 
+      TempFloat = preferences.getFloat(Buf);
+      if (TempFloat) S[SNr].NullWert = TempFloat;
+
+      if (DebugMode) {
+        Serial.print("Lese "); Serial.print(Buf); Serial.print(" = "); Serial.println(S[SNr].NullWert); 
+      }
+    }
+    if (S[SNr].Type == SENS_TYPE_VOLT) {
+      snprintf(Buf, sizeof(Buf), "Vin-%d", SNr); 
+      TempFloat = preferences.getFloat(Buf);
+      if (TempFloat) S[SNr].Vin = TempFloat;
+
+      if (DebugMode) {
+        Serial.print("Lese "); Serial.print(Buf); Serial.print(" = "); Serial.println(S[SNr].Vin); 
+      }
+    }
+  }
   preferences.end();
 }
 void ReportPeers() {
@@ -645,7 +674,7 @@ void ReportPeers() {
   Serial.println("Report-Peers:");
   for (int PNr=0; PNr<MAX_PEERS; PNr++) {
     if (DebugMode) {
-      sprintf(Buf, "%s (Type: %d) - MAC:", P[PNr].Name, P[PNr].Type);
+      snprintf(Buf, sizeof(Buf), "%s (Type: %d) - MAC:", P[PNr].Name, P[PNr].Type);
       Serial.print(Buf); PrintMAC(P[PNr].BroadcastAddress);
       Serial.println();
     }
@@ -802,9 +831,9 @@ void SendPairingRequest() {
   
   for (int Si=0 ; Si<MAX_PERIPHERALS; Si++) {
     if (S[Si].Type) {
-      sprintf(Buf, "T%d", Si); 
+      snprintf(Buf, sizeof(Buf), "T%d", Si); 
       doc[Buf] = S[Si].Type;
-      sprintf(Buf, "N%d", Si); 
+      snprintf(Buf, sizeof(Buf), "N%d", Si); 
       doc[Buf] = S[Si].Name;
     }
   }
@@ -871,7 +900,7 @@ float ReadAmp (int Si) {
     Serial.print("TempVolt: "); Serial.println(TempVolt,4);
     Serial.print("Nullwert: "); Serial.println(S[Si].NullWert,4);
     Serial.print("VperAmp:  "); Serial.println(S[Si].VperAmp,4);
-    Serial.print("TempAmp:  "); Serial.println(TempAmp,4);
+    Serial.print("Amp ((TempVolt - S[Si].NullWert) / S[Si].VperAmp)):  "); Serial.println(TempAmp,4);
   } 
   if (abs(TempAmp) < SCHWELLE) TempAmp = 0;
   
@@ -886,7 +915,7 @@ float ReadVolt(int V) {
   if (DebugMode) {
     Serial.print("TempVal:  "); Serial.println(TempVal,4);
     Serial.print("Vin:      "); Serial.println(S[V].Vin);
-    Serial.print("Volt: ");     Serial.println(TempVolt,4);
+    Serial.print("Volt (TempVal / S[V].Vin)): ");     Serial.println(TempVolt,4);
     
   } 
   return TempVolt;
@@ -971,20 +1000,23 @@ void ShowVoltCalib(float V) {
       if (S[SNr].Type = SENS_TYPE_VOLT) {
         int TempRead = analogRead(S[SNr].IOPort);
         
+        S[SNr].Vin = TempRead / V;
+        
         if (DebugMode) {
           Serial.print("S["); Serial.print(SNr); Serial.print("].Vin = ");
           Serial.println(S[SNr].Vin, 4);
           Serial.print("Volt(nachher) = ");
           Serial.println(TempRead/S[SNr].Vin, 4);
         }
-        S[SNr].Vin = TempRead / V;
         
         preferences.begin("JeepifyInit", false);
-        preferences.putFloat("Vin", S[SNr].Vin);
+        
+        sprintf(Buf, "Vin-%d", SNr);
+        preferences.putFloat(Buf, S[SNr].Vin);
         preferences.end();
 
         dtostrf(TempRead/S[SNr].Vin, 0, 2, BufNr);
-        sprintf(Buf, "[%d] %s (Type: %d): Spannung ist jetzt: %sV", SNr, S[SNr].Name, S[SNr].Type, BufNr);
+        snprintf(Buf, sizeof(Buf), "[%d] %s (Type: %d): Spannung ist jetzt: %sV", SNr, S[SNr].Name, S[SNr].Type, BufNr);
         
         #ifdef TFT_USED
           int h=30;
@@ -1044,14 +1076,14 @@ void ShowEichen() {
           Serial.print(", TempVolt: "); Serial.println(TempVolt);
         }
         S[SNr].NullWert = TempVolt;
-        sprintf(Buf, "Null-%d", SNr); 
+        snprintf(Buf, sizeof(Buf), "Null-%d", SNr); 
         preferences.putFloat(Buf, S[SNr].NullWert);
         if (DebugMode) {
           Serial.print("schreibe "); Serial.print(Buf); Serial.print(" = "); Serial.println(S[SNr].NullWert); 
         }
 
         dtostrf(TempVolt, 0, 2, BufNr);
-        sprintf(Buf, "Eichen fertig: [%d] %s (Type: %d): Gemessene Spannung bei Null: %sV", SNr, S[SNr].Name, S[SNr].Type, BufNr);
+        snprintf(Buf, sizeof(Buf), "Eichen fertig: [%d] %s (Type: %d): Gemessene Spannung bei Null: %sV", SNr, S[SNr].Name, S[SNr].Type, BufNr);
         
         #ifdef TFT_USED
         int h=20;
@@ -1113,7 +1145,7 @@ void ShowStatus() {
 
     for(int SNr=0; SNr<MAX_STATUS; SNr++) {
       char Buf[20];
-      sprintf(Buf, "%02d:%02d:%02d", (int)Status[SNr].TSMsg/360000%60, (int)Status[SNr].TSMsg/60000%60, (int)Status[SNr].TSMsg/1000%60);
+      snprintf(Buf, sizeof(Buf), "%02d:%02d:%02d", (int)Status[SNr].TSMsg/360000%60, (int)Status[SNr].TSMsg/60000%60, (int)Status[SNr].TSMsg/1000%60);
       Serial.println(Buf);
     }
   }
