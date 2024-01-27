@@ -1,13 +1,13 @@
-#define NODE_NAME "C3-PDC2"
+#define NODE_NAME "C3-Bat1"
 #define VERSION   "V 1.16"
 
 #pragma region Module_Definitions
 #define MODULE_C3
 
-//#define MODULE_4AMP_1VOLT_NOADC
+#define MODULE_4AMP_1VOLT_NOADC
 //#define MODULE_SWITCH_2
 //#define MODULE_SWITCH_4
-#define MODULE_4AMP_1VOLT
+//define MODULE_4AMP_1VOLT
 
 #ifdef MODULE_SWITCH_4
   #define NODE_TYPE SWITCH_4_WAY
@@ -15,19 +15,19 @@
  
   #define NAME_SENSOR_0 "M3-SW0"
   #define TYPE_SENSOR_0  SENS_TYPE_SWITCH
-  #define IOPORT_0       4
+  #define IOPORT_0       1
   
   #define NAME_SENSOR_1 "M3-SW1"
   #define TYPE_SENSOR_1  SENS_TYPE_SWITCH
-  #define IOPORT_1      14
+  #define IOPORT_1      2
   
   #define NAME_SENSOR_2 "M3-SW2"
   #define TYPE_SENSOR_2  SENS_TYPE_SWITCH
-  #define IOPORT_2       12
+  #define IOPORT_2       3
   
   #define NAME_SENSOR_3 "M3-SW3"
   #define TYPE_SENSOR_3  SENS_TYPE_SWITCH
-  #define IOPORT_3       13
+  #define IOPORT_3       4
 #endif
 #ifdef MODULE_SWITCH_2
   #define NODE_TYPE SWITCH_2_WAY
@@ -160,7 +160,8 @@ MultiResetDetector* mrd;
 #pragma endregion LED-setup
 #pragma region Includes
 #include <Arduino.h>
-#include "C:\Users\micha\Documents\PlatformIO\Projects\jeepify.h"
+#include <nvs_flash.h>
+#include "../../jeepify.h"
 #include <ArduinoJson.h>
 #include <Preferences.h>
 #pragma region ESP_NOW
@@ -488,8 +489,7 @@ void loop() {
         if ((millis() - TSBootButton) > 3000) {
           Serial.println("Button pressed... Clearing Peers and Reset");
           AddStatus("Clearing Peers and Reset");
-          ClearPeers();
-          ESP.restart(); 
+          nvs_flash_erase(); nvs_flash_init(); ; ESP.restart();
         }
       }
     }
