@@ -1,13 +1,13 @@
-#define NODE_NAME "LiPofy"
+#define NODE_NAME "LiPofy-2"
 #define VERSION   "V 1.16"
 
 #pragma region Module_Definitions
 //#define MODULE_C3
 
-//#define MODULE_4AMP_1VOLT_NOADC
+#define MODULE_4AMP_1VOLT_NOADC
 //#define MODULE_SWITCH_2
 //#define MODULE_SWITCH_4
-#define MODULE_4AMP_1VOLT
+//#define MODULE_4AMP_1VOLT
 
 #ifdef MODULE_SWITCH_4
   #define NODE_TYPE SWITCH_4_WAY
@@ -151,8 +151,8 @@ MultiResetDetector* mrd;
   #ifndef LED_BUILTIN
     #define LED_BUILTIN 2         
   #endif
-  #define LED_OFF     LOW
-  #define LED_ON      HIGH
+  #define LED_OFF     HIGH
+  #define LED_ON      LOW
 #else
   #define LED_ON      LOW
   #define LED_OFF     HIGH
@@ -639,8 +639,8 @@ void GetPeers() {
   for (int SNr=0; SNr<MAX_PERIPHERALS; SNr++) {
     if (S[SNr].Type == SENS_TYPE_AMP) {
       snprintf(Buf, sizeof(Buf), "Null-%d", SNr); 
-      TempFloat = preferences.getFloat(Buf);
-      if (TempFloat) S[SNr].NullWert = TempFloat;
+      TempFloat = preferences.getFloat(Buf, 0);
+      if (TempFloat  > 0) S[SNr].NullWert = TempFloat;
 
       if (DebugMode) {
         Serial.print("Lese "); Serial.print(Buf); Serial.print(" = "); Serial.println(S[SNr].NullWert); 
@@ -648,8 +648,8 @@ void GetPeers() {
     }
     if (S[SNr].Type == SENS_TYPE_VOLT) {
       snprintf(Buf, sizeof(Buf), "Vin-%d", SNr); 
-      TempFloat = preferences.getFloat(Buf);
-      if (TempFloat) S[SNr].Vin = TempFloat;
+      TempFloat = preferences.getFloat(Buf, 0);
+      if (TempFloat > 0) S[SNr].Vin = TempFloat;
 
       if (DebugMode) {
         Serial.print("Lese "); Serial.print(Buf); Serial.print(" = "); Serial.println(S[SNr].Vin); 
