@@ -1064,7 +1064,7 @@ void ShowVoltCalib(float V) {
   }
 }
 void ShowEichen() {
-  if (OldMode != Mode) { 
+  if (1) { // OldMode != Mode) { 
     char Buf[100] = {}; char BufNr[10] = {};
     
     TSScreenRefresh = millis(); 
