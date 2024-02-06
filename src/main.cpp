@@ -1,10 +1,11 @@
-#define NODE_NAME "LiPofy-2"
+#define NODE_NAME "32BatS"
 #define VERSION   "V 1.16"
 
 #pragma region Module_Definitions
 //#define MODULE_C3
 
-#define MODULE_4AMP_1VOLT_NOADC
+#define MODULE_3AMP_1VOLT_NOADC
+//#define MODULE_4AMP_1VOLT_NOADC
 //#define MODULE_SWITCH_2
 //#define MODULE_SWITCH_4
 //#define MODULE_4AMP_1VOLT
@@ -78,7 +79,8 @@
 #ifdef MODULE_4AMP_1VOLT_NOADC
   #define NODE_TYPE BATTERY_SENSOR
   #define RELAY_TYPE     1 // 1-normal, -1 bei reversed
- 
+  #define VOLT_DEVIDER   1
+
   #define NAME_SENSOR_0 "Sol1"
   #define TYPE_SENSOR_0  SENS_TYPE_AMP
   #define NULL_SENSOR_0  3134
@@ -107,6 +109,34 @@
   #define TYPE_SENSOR_4  SENS_TYPE_VOLT
   #define VIN_SENSOR_4   200
   #define IOPORT_4       5 //39
+#endif
+#ifdef MODULE_3AMP_1VOLT_NOADC // kleines esp32 mit extra display
+  #define NODE_TYPE BATTERY_SENSOR
+  #define RELAY_TYPE     1 // 1-normal, -1 bei reversed
+  #define VOLT_DEVIDER   1.5
+
+  #define NAME_SENSOR_0 "klA1"
+  #define TYPE_SENSOR_0  SENS_TYPE_AMP
+  #define NULL_SENSOR_0  2.2991
+  #define SENS_SENSOR_0  0.066
+  #define IOPORT_0       35
+
+  #define NAME_SENSOR_1 "klA2"
+  #define TYPE_SENSOR_1  SENS_TYPE_AMP
+  #define NULL_SENSOR_1  2.2991
+  #define SENS_SENSOR_1  0.066
+  #define IOPORT_1       32
+  
+  #define NAME_SENSOR_2 "klA3"
+  #define TYPE_SENSOR_2  SENS_TYPE_AMP
+  #define NULL_SENSOR_2  2.2875
+  #define SENS_SENSOR_2  0.066
+  #define IOPORT_2       33
+  
+  #define NAME_SENSOR_3  "klV1"
+  #define TYPE_SENSOR_3  SENS_TYPE_VOLT
+  #define VIN_SENSOR_3   200
+  #define IOPORT_3       34
 #endif
 #pragma endregion Module_Definitions
 #pragma region Board_specific(ADC, TFT, TOUCH, BUTTONS)
@@ -890,8 +920,7 @@ float ReadAmp (int Si) {
     float TempVoltOverNull = 0;
     TempVal  = analogRead(S[Si].IOPort);
     TempVolt = 3.3/4095*TempVal;
-    TempVoltOverNull = 3.3/4095 * (TempVal - S[Si].NullWert);
-    TempAmp = TempVoltOverNull/S[Si].VperAmp * 1,5; // 1.5 wegen Voltage-Devider
+    TempAmp  = (TempVolt - S[Si].NullWert) / S[Si].VperAmp * VOLT_DEVIDER;// 1.5 wegen Voltage-Devider
     delay(10);
   #endif
   
@@ -900,7 +929,7 @@ float ReadAmp (int Si) {
     Serial.print("TempVolt: "); Serial.println(TempVolt,4);
     Serial.print("Nullwert: "); Serial.println(S[Si].NullWert,4);
     Serial.print("VperAmp:  "); Serial.println(S[Si].VperAmp,4);
-    Serial.print("Amp ((TempVolt - S[Si].NullWert) / S[Si].VperAmp)):  "); Serial.println(TempAmp,4);
+    Serial.print("Amp (TempVolt - S[Si].NullWert) / S[Si].VperAmp * 1.5:  "); Serial.println(TempAmp,4);
   } 
   if (abs(TempAmp) < SCHWELLE) TempAmp = 0;
   
@@ -997,7 +1026,7 @@ void ShowVoltCalib(float V) {
     #endif
 
     for (int SNr=0; SNr<MAX_PERIPHERALS; SNr++){
-      if (S[SNr].Type = SENS_TYPE_VOLT) {
+      if (S[SNr].Type == SENS_TYPE_VOLT) {
         int TempRead = analogRead(S[SNr].IOPort);
         
         S[SNr].Vin = TempRead / V;
@@ -1068,7 +1097,7 @@ void ShowEichen() {
         #else
         //Filter implementieren !!!
         TempVal  = analogRead(S[SNr].IOPort);
-        TempVolt = 3.3/4095*TempVal;
+        TempVolt = 3.3/4095*TempVal; // 1.5???
         #endif      
 
         if (DebugMode) { 
@@ -1076,6 +1105,7 @@ void ShowEichen() {
           Serial.print(", TempVolt: "); Serial.println(TempVolt);
         }
         S[SNr].NullWert = TempVolt;
+  
         snprintf(Buf, sizeof(Buf), "Null-%d", SNr); 
         preferences.putFloat(Buf, S[SNr].NullWert);
         if (DebugMode) {
