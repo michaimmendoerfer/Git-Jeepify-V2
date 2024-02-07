@@ -290,12 +290,6 @@ void   GoToSleep();
 #pragma endregion Function_Definitions
 
 void InitModule() {
-  preferences.begin("JeepifyInit", true);
-  DebugMode = preferences.getBool("DebugMode", true);
-  SleepMode = preferences.getBool("SleepMode", false);
-  DemoMode  = preferences.getBool("DemoMode", false);
-  preferences.end();
-  
   #ifdef NAME_SENSOR_0
     strcpy(S[0].Name, NAME_SENSOR_0);
     S[0].Type     = TYPE_SENSOR_0;
@@ -458,6 +452,14 @@ void InitModule() {
     TFT.setRotation(3);
     TFT.fillScreen(TFT_BLACK);
   #endif
+
+  preferences.begin("JeepifyInit", true);
+  DebugMode = preferences.getBool("DebugMode", true);
+  SleepMode = preferences.getBool("SleepMode", false);
+  DemoMode  = preferences.getBool("DemoMode", false);
+  
+  preferences.end();
+  
 }
 void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
