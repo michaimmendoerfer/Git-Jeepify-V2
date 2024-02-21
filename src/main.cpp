@@ -4,8 +4,8 @@
 #pragma region Module_Definitions
 #define MODULE_C3
 
-//#define MODULE_3AMP_1VOLT_NOADC
-#define MODULE_4AMP_1VOLT_NOADC
+#define MODULE_3AMP_1VOLT_NOADC
+//#define MODULE_4AMP_1VOLT_NOADC
 //#define MODULE_SWITCH_2
 //#define MODULE_SWITCH_4
 //#define MODULE_4AMP_1VOLT
@@ -103,12 +103,12 @@
   #define TYPE_SENSOR_3  SENS_TYPE_AMP
   #define NULL_SENSOR_3  3150
   #define SENS_SENSOR_3  0.066
-  #define IOPORT_3       4 //33
+  #define IOPORT_3       5 //33
   
   #define NAME_SENSOR_4  "LiPo1"
   #define TYPE_SENSOR_4  SENS_TYPE_VOLT
   #define VIN_SENSOR_4   200
-  #define IOPORT_4       5 //39
+  #define IOPORT_4       4 //39
 #endif
 #ifdef MODULE_3AMP_1VOLT_NOADC // kleines esp32 mit extra display
   #define NODE_TYPE BATTERY_SENSOR
@@ -119,24 +119,24 @@
   #define TYPE_SENSOR_0  SENS_TYPE_AMP
   #define NULL_SENSOR_0  2.2991
   #define SENS_SENSOR_0  0.066
-  #define IOPORT_0       35
+  #define IOPORT_0       0 //kleiner 35
 
   #define NAME_SENSOR_1 "klA2"
   #define TYPE_SENSOR_1  SENS_TYPE_AMP
   #define NULL_SENSOR_1  2.2991
   #define SENS_SENSOR_1  0.066
-  #define IOPORT_1       32
+  #define IOPORT_1       1 // kleiner 32
   
   #define NAME_SENSOR_2 "klA3"
   #define TYPE_SENSOR_2  SENS_TYPE_AMP
   #define NULL_SENSOR_2  2.2875
   #define SENS_SENSOR_2  0.066
-  #define IOPORT_2       33
+  #define IOPORT_2       1 // kleiner 33
   
   #define NAME_SENSOR_3  "klV1"
   #define TYPE_SENSOR_3  SENS_TYPE_VOLT
   #define VIN_SENSOR_3   200
-  #define IOPORT_3       34
+  #define IOPORT_3       4// kleiner 34
 #endif
 #pragma endregion Module_Definitions
 #pragma region Board_specific(ADC, TFT, TOUCH, BUTTONS)
@@ -179,7 +179,7 @@ MultiResetDetector* mrd;
 #pragma region LED-setup
 #ifdef ESP32 
   #ifndef LED_BUILTIN
-    #define LED_BUILTIN 2         
+    #define LED_BUILTIN 8//2         8-esp32-c3-supermini
   #endif
   #define LED_OFF     HIGH
   #define LED_ON      LOW
@@ -226,7 +226,7 @@ u_int8_t broadcastAddressAll[6] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
 
 bool DebugMode     = true;
 bool SleepMode     = false;
-bool DemoMode      = false;
+bool DemoMode      = true;
 bool ReadyToPair   = false;
 bool ScreenChanged = false;
 
@@ -457,7 +457,7 @@ void InitModule() {
   preferences.begin("JeepifyInit", true);
   DebugMode = preferences.getBool("DebugMode", true);
   SleepMode = preferences.getBool("SleepMode", false);
-  DemoMode  = preferences.getBool("DemoMode", false);
+  DemoMode  = preferences.getBool("DemoMode", true);
   
   preferences.end();
   
@@ -806,7 +806,8 @@ void SendMessage () {
         S[SNr].Changed = false;
       }
 
-      if (S[SNr].Changed) doc[S[SNr].Name] = buf;
+      //if (S[SNr].Changed) 
+      doc[S[SNr].Name] = buf;
     }
 
     if (S[SNr].Type == SENS_TYPE_VOLT) {
