@@ -1,11 +1,11 @@
 #define NODE_NAME "32BatS"
-#define VERSION   "V 1.16"
+#define VERSION   "V 2.01"
 
 #pragma region Module_Definitions
-//#define MODULE_C3
+#define MODULE_C3
 
-#define MODULE_3AMP_1VOLT_NOADC
-//#define MODULE_4AMP_1VOLT_NOADC
+//#define MODULE_3AMP_1VOLT_NOADC
+#define MODULE_4AMP_1VOLT_NOADC
 //#define MODULE_SWITCH_2
 //#define MODULE_SWITCH_4
 //#define MODULE_4AMP_1VOLT
@@ -222,11 +222,12 @@ struct_Touch Touch;
 struct_Status Status[MAX_STATUS];
 
 volatile u_int8_t TempBroadcast[6];
+u_int8_t broadcastAddressAll[6] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff}; 
 
 bool DebugMode     = true;
 bool SleepMode     = false;
 bool DemoMode      = false;
-bool ReadyToPair   = true;
+bool ReadyToPair   = false;
 bool ScreenChanged = false;
 
 int  Mode          = S_STATUS;
