@@ -269,7 +269,7 @@ float  ReadAmp (int A);
 float  ReadVolt(int V);
 void   SendMessage();
 void   SendPairingRequest();
-
+void   ShutPowerDown();
 void   InitModule();
 void   SavePeers();
 void   GetPeers();
@@ -567,7 +567,7 @@ void loop() {
 
     if (VOLTAGE_MON != 99) {
       if ((S[VOLTAGE_MON].Type == SENS_TYPE_VOLT) and (S[VOLTAGE_MON].Value < 10.5)) {
-        ShutDown();
+        ShutPowerDown();
       }
     }
   }
