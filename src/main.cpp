@@ -12,7 +12,8 @@
 
 #ifdef MODULE_SWITCH_4
   #define NODE_TYPE SWITCH_4_WAY
-  #define RELAY_TYPE     1 // -1 bei reversed
+  #define RELAY_TYPE     1    // -1 bei reversed
+  #define VOLTAGE_MON    99   // Sensor which holds the Voltage-sensor (99 - no Sensor)
  
   #define NAME_SENSOR_0 "M3-SW0"
   #define TYPE_SENSOR_0  SENS_TYPE_SWITCH
@@ -32,7 +33,8 @@
 #endif
 #ifdef MODULE_SWITCH_2
   #define NODE_TYPE SWITCH_2_WAY
-  #define RELAY_TYPE    -1 // 1-normal, -1 bei reversed
+  #define RELAY_TYPE    -1    // 1-normal, -1 bei reversed
+  #define VOLTAGE_MON    99   // Sensor which holds the Voltage-sensor (99 - no Sensor)
  
   #define NAME_SENSOR_0 "SW-0"
   #define TYPE_SENSOR_0  SENS_TYPE_SWITCH
@@ -45,7 +47,8 @@
 #ifdef MODULE_4AMP_1VOLT
   #define NODE_TYPE BATTERY_SENSOR
   #define ADC_USED 
-  #define RELAY_TYPE     1 // 1-normal, -1 bei reversed      
+  #define RELAY_TYPE     1    // 1-normal, -1 bei reversed      
+  #define VOLTAGE_MON    4    // Sensor which holds the Voltage-sensor (99 - no Sensor)
  
   #define NAME_SENSOR_0 "Extern"
   #define TYPE_SENSOR_0  SENS_TYPE_AMP
@@ -78,9 +81,10 @@
 #endif
 #ifdef MODULE_4AMP_1VOLT_NOADC
   #define NODE_TYPE BATTERY_SENSOR
-  #define RELAY_TYPE     1 // 1-normal, -1 bei reversed
+  #define RELAY_TYPE     1    // 1-normal, -1 bei reversed
   #define VOLT_DEVIDER   1
-
+  #define VOLTAGE_MON    4    // Sensor which holds the Voltage-sensor (99 - no Sensor)
+ 
   #define NAME_SENSOR_0 "Sol1"
   #define TYPE_SENSOR_0  SENS_TYPE_AMP
   #define NULL_SENSOR_0  3134
@@ -112,9 +116,10 @@
 #endif
 #ifdef MODULE_3AMP_1VOLT_NOADC // kleines esp32 mit extra display
   #define NODE_TYPE BATTERY_SENSOR
-  #define RELAY_TYPE     1 // 1-normal, -1 bei reversed
+  #define RELAY_TYPE     1    // 1-normal, -1 bei reversed
   #define VOLT_DEVIDER   1.5
-
+  #define VOLTAGE_MON    4    // Sensor which holds the Voltage-sensor (99 - no Sensor)
+ 
   #define NAME_SENSOR_0 "klA1"
   #define TYPE_SENSOR_0  SENS_TYPE_AMP
   #define NULL_SENSOR_0  2.2991
@@ -229,6 +234,7 @@ bool SleepMode     = false;
 bool DemoMode      = true;
 bool ReadyToPair   = false;
 bool ScreenChanged = false;
+bool ShutDown      = false;
 
 int  Mode          = S_STATUS;
 int  OldMode       = 0;
@@ -558,6 +564,12 @@ void loop() {
     TSSend = millis();
     if (ReadyToPair) SendPairingRequest();
     else SendMessage();
+
+    if (VOLTAGE_MON != 99) {
+      if ((S[VOLTAGE_MON].Type == SENS_TYPE_VOLT) and (S[VOLTAGE_MON].Value < 10.5)) {
+        ShutDown();
+      }
+    }
   }
   if (((millis() - TSPair ) > PAIR_INTERVAL ) and (ReadyToPair)) {
     TSPair = 0;
@@ -898,6 +910,13 @@ void SetDebugMode(bool Mode) {
     if (preferences.getBool("DebugMode", false) != DebugMode) preferences.putBool("DebugMode", DebugMode);
   preferences.end();
 }
+void Shutdown() {
+  Serial.println("!!! Voltage underrund... shutting down !!!");
+  ShutDown = true;
+
+  for (int SNr=0; SNr<MAX_PERIPHERALS; SNr++) if (S[SNr].Type == SENS_TYPE_SWITCH) digitalWrite(S[SNr].IOPort, 0*RELAY_TYPE);
+}
+
 void AddStatus(String Msg) {
   for (int Si=MAX_STATUS-1; Si>0; Si--) {
     Status[Si].Msg   = Status[Si-1].Msg;
@@ -907,7 +926,7 @@ void AddStatus(String Msg) {
   Status[0].TSMsg = millis();
 }
 void UpdateSwitches() {
-  for (int SNr=0; SNr<MAX_PERIPHERALS; SNr++) if (S[SNr].Type == SENS_TYPE_SWITCH) digitalWrite(S[SNr].IOPort, S[SNr].Value*RELAY_TYPE);
+  for (int SNr=0; SNr<MAX_PERIPHERALS; SNr++) if (S[SNr].Type == SENS_TYPE_SWITCH) digitalWrite(S[SNr].IOPort, S[SNr].Value*RELAY_TYPE); // ???
   SendMessage();
 }
 float ReadAmp (int Si) {
